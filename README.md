@@ -192,3 +192,6 @@ python app.py
 ## License
 
 MIT (or choose a license). Add a proper `LICENSE` file if distributing.
+
+![oo](https://github.com/user-attachments/assets/f7976cc9-8e36-4ccd-856f-d3c6c8f88b56)
+
