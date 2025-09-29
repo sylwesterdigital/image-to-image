@@ -1,5 +1,11 @@
 # Webcam → Real-Time LCM (img2img) — POC
 
+
+
+https://github.com/user-attachments/assets/dc103afa-a3dd-4bdb-ba02-65b8a643edda
+
+
+
 Dead-simple demo: left pane shows live webcam, right pane shows image-to-image output from a Real-Time Latent Consistency Model (LCM).
 Stack: **Flask + vanilla JS + lil-gui + Diffusers**. Works on macOS (Apple Silicon M1/M2 via **MPS**), NVIDIA CUDA, and CPU (slow).
 
