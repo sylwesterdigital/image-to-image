@@ -1,4 +1,4 @@
-<!-- templates/index.html — full file (relocated buttons, big prompt under panes, speed/quality tips) -->
+<!-- templates/index.html — full file (4 source modes: webcam / upload image / video file / draw in SVG) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -7,7 +7,7 @@
   name="viewport"
   content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
   />
-  <title>Webcam ⇢ Real-Time LCM (img2img)</title>
+  <title>Realtime LCM (img2img)</title>
   <link rel="icon" href="/static/favicon.ico" />
   <script type="importmap">
     {
@@ -18,23 +18,35 @@
   </script>
   <style>
     :root { --gap: 14px; --panel:#111114; --border:#242428; --text:#e9e9ea; --muted:#b8b8be; }
-    html, body { margin:0; padding:0; background:#0b0b0c; color:var(--text); font: 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    html, body { margin:0; padding:0; background:#0b0b0c; color:var(--text); font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
     .wrap { display:flex; flex-direction:column; min-height:100svh; }
     header { padding:10px var(--gap); font-weight:700; letter-spacing:.3px; font-size:16px; }
+
+    /* Source mode switcher */
+    .modes { display:flex; gap:8px; padding:0 var(--gap) var(--gap); flex-wrap:wrap; }
+    .chip { background:#18181b; border:1px solid #2a2a2e; border-radius:999px; padding:8px 12px; cursor:pointer; user-select:none; }
+    .chip.active { background:#2a2a2e; border-color:#3a3a3f; }
+
     .grid { display:grid; grid-template-columns: 1fr 1fr; gap: var(--gap); padding: 0 var(--gap) var(--gap); }
     .pane { background:var(--panel); border:1px solid var(--border); border-radius:14px; overflow:hidden; position:relative; min-height:40svh; }
     .pane h3 { position:absolute; z-index:2; top:8px; left:10px; margin:0; font-size:12px; letter-spacing:.3px; opacity:.8; background:rgba(0,0,0,.35); padding:4px 6px; border-radius:8px; }
     video, img, canvas { width:100%; height:100%; object-fit:cover; display:block; }
-    #overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.8); color:#fff; z-index:9999; text-align:center; padding:24px; }
-    #overlay.show { display:flex; }
 
-    /* Controls area under the panes */
+    /* layered sources in left pane; only one visible */
+    .src { position:absolute; inset:0; display:none; }
+    .src.show { display:block; }
+
+    /* Draw SVG surface */
+    #drawWrap { position:absolute; inset:0; }
+    #drawSvg { width:100%; height:100%; display:block; background:#0d0d10; touch-action:none; }
+    .draw-toolbar { position:absolute; right:10px; top:10px; display:flex; gap:8px; z-index:3; }
+    .btn-sm { background:#2a2a2e; color:#fff; border:1px solid #3a3a3f; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:12px; }
+
+    /* Controls under panes */
     .controls { display:grid; grid-template-columns: 1fr; gap: var(--gap); padding: 0 var(--gap) var(--gap); }
     .action-row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
     .action-row .spacer { flex:1; }
-    .btn {
-      background:#2a2a2e; color:#fff; border:1px solid #3a3a3f; border-radius:10px; padding:10px 14px; cursor:pointer;
-    }
+    .btn { background:#2a2a2e; color:#fff; border:1px solid #3a3a3f; border-radius:10px; padding:10px 14px; cursor:pointer; }
     .btn:disabled { opacity:.55; cursor:not-allowed; }
     .status { font-size:12px; opacity:.9; padding:6px 10px; border-radius:999px; border:1px solid #2a2a2e; background:#151518; }
     .row { display:grid; grid-template-columns: 1fr; gap:8px; }
@@ -51,6 +63,9 @@
 
     footer { padding: 8px var(--gap) var(--gap); opacity:.7; font-size:12px; }
 
+    #overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.8); color:#fff; z-index:9999; text-align:center; padding:24px; }
+    #overlay.show { display:flex; }
+
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
       .pane { min-height:45svh; }
@@ -66,22 +81,66 @@
   </div>
 
   <div class="wrap">
-    <header>Webcam ⇢ Real-Time LCM (img2img)</header>
+    <header>Realtime LCM (img2img)</header>
+
+    <!-- Mode chips -->
+    <div class="modes">
+      <div class="chip active" data-mode="webcam">Webcam</div>
+      <div class="chip" data-mode="image">Upload image</div>
+      <div class="chip" data-mode="video">Video file</div>
+      <div class="chip" data-mode="draw">Draw (SVG)</div>
+    </div>
 
     <div class="grid">
+      <!-- LEFT: Source -->
       <div class="pane">
-        <h3>Webcam</h3>
-        <video id="cam" autoplay playsinline muted></video>
+        <h3 id="srcTitle">Source</h3>
+
+        <!-- Webcam -->
+        <div id="srcWebcam" class="src show">
+          <video id="cam" autoplay playsinline muted></video>
+          <div style="position:absolute;left:10px;bottom:10px;display:flex;gap:8px;">
+            <button id="btnScan" class="btn-sm">Scan cameras</button>
+            <button id="btnSwapFacing" class="btn-sm">Swap facing</button>
+          </div>
+        </div>
+
+        <!-- Upload image -->
+        <div id="srcImage" class="src">
+          <input id="fileImage" type="file" accept="image/*" style="position:absolute;z-index:3;left:10px;top:10px" />
+          <img id="imgUpload" alt="uploaded" />
+        </div>
+
+        <!-- Video file -->
+        <div id="srcVideo" class="src">
+          <input id="fileVideo" type="file" accept="video/*" style="position:absolute;z-index:3;left:10px;top:10px" />
+          <video id="vidFile" autoplay muted loop controls playsinline style="background:#000"></video>
+        </div>
+
+        <!-- Draw (SVG) -->
+        <div id="srcDraw" class="src">
+          <div id="drawWrap">
+            <div class="draw-toolbar">
+              <button id="drawClear" class="btn-sm">Clear</button>
+              <button id="drawUndo" class="btn-sm">Undo</button>
+              <button id="drawThin" class="btn-sm">Thin</button>
+              <button id="drawThick" class="btn-sm">Thick</button>
+            </div>
+            <svg id="drawSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+          </div>
+        </div>
       </div>
+
+      <!-- RIGHT: Output -->
       <div class="pane">
         <h3>Output</h3>
         <img id="out" alt="Model output" />
       </div>
     </div>
 
+    <!-- Controls -->
     <section class="controls">
       <div class="action-row">
-        <button id="btnScan"  class="btn">Scan cameras</button>
         <button id="btnStart" class="btn">Start live</button>
         <button id="btnStop"  class="btn">Stop live</button>
         <button id="btnSnap"  class="btn">Process one frame</button>
@@ -92,21 +151,21 @@
 
       <div class="row">
         <label for="promptInput">Prompt</label>
-        <textarea id="promptInput" placeholder="Describe the look you want (e.g., ‘cinematic portrait, dramatic lighting, shallow depth of field’)">cinematic portrait, dramatic lighting</textarea>
+        <textarea id="promptInput" placeholder="Describe the look you want">cinematic portrait, dramatic lighting</textarea>
       </div>
 
       <div class="tips">
         <strong>Speed vs. Quality</strong>
         <ul>
-          <li><strong>Faster:</strong> Steps 2–4, Guidance 0–2, lower capture resolution (e.g., 640×480).</li>
-          <li><strong>More stylized:</strong> Higher Strength (0.6–0.9) deviates more from the webcam frame.</li>
-          <li><strong>More faithful:</strong> Lower Strength (0.2–0.5) keeps the original structure.</li>
+          <li><strong>Faster:</strong> Steps 2–4, Guidance 0–2, lower source resolution (e.g., 640×480).</li>
+          <li><strong>More stylized:</strong> Higher Strength (0.6–0.9) deviates more from the source.</li>
+          <li><strong>More faithful:</strong> Lower Strength (0.2–0.5) keeps the structure.</li>
           <li><strong>Sharper but slower:</strong> Steps 6–8 and higher resolution.</li>
         </ul>
       </div>
     </section>
 
-    <footer>Keep Steps low (2–4) for real-time feel. LCM likes low Guidance (0–2). Use HTTPS so browsers show camera devices.</footer>
+    <footer>Use HTTPS so the browser exposes cameras. LCM prefers low Guidance (0–2). Keep Steps low for realtime feel.</footer>
   </div>
 
   <canvas id="hidden" style="display:none;"></canvas>
@@ -116,32 +175,56 @@
 
     // Secure-context gate
     const overlay = document.getElementById("overlay");
-    const secure = location.protocol === "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+    const secure = location.protocol === "https:" || ["localhost","127.0.0.1","[::1]"].includes(location.hostname);
     if (secure) overlay.classList.remove("show");
 
     // DOM refs
+    const chips = Array.from(document.querySelectorAll(".chip"));
+    const srcTitle = document.getElementById("srcTitle");
+    const sections = {
+      webcam: document.getElementById("srcWebcam"),
+      image : document.getElementById("srcImage"),
+      video : document.getElementById("srcVideo"),
+      draw  : document.getElementById("srcDraw"),
+    };
+
     const cam = document.getElementById("cam");
+    const btnScan = document.getElementById("btnScan");
+    const btnSwapFacing = document.getElementById("btnSwapFacing");
+
+    const fileImage = document.getElementById("fileImage");
+    const imgUpload = document.getElementById("imgUpload");
+
+    const fileVideo = document.getElementById("fileVideo");
+    const vidFile = document.getElementById("vidFile");
+
+    const drawSvg = document.getElementById("drawSvg");
+    const drawClear = document.getElementById("drawClear");
+    const drawUndo = document.getElementById("drawUndo");
+    const drawThin = document.getElementById("drawThin");
+    const drawThick = document.getElementById("drawThick");
+
     const out = document.getElementById("out");
     const hidden = document.getElementById("hidden");
     const ctx = hidden.getContext("2d");
+
     const statusEl = document.getElementById("status");
+    const httpHint = document.getElementById("httpHint");
     const promptEl = document.getElementById("promptInput");
 
-    // Action buttons
-    const btnScan  = document.getElementById("btnScan");
-    const btnStart = document.getElementById("btnStart");
-    const btnStop  = document.getElementById("btnStop");
-    const btnSnap  = document.getElementById("btnSnap");
-    const httpHint = document.getElementById("httpHint");
-    httpHint.textContent = location.protocol === "https:" ? "https ✓" : "http (limited camera labels)";
+    // state
+    const MODE = { WEBCAM:"webcam", IMAGE:"image", VIDEO:"video", DRAW:"draw" };
+    let mode = MODE.WEBCAM;
 
-    // State
     let currentStream = null;
     let inFlight = false;
     let avgLatencyMs = 900;
     let liveTimer = null;
+    let facing = "user"; // for webcam
 
-    // GUI (compact for camera + params)
+    httpHint.textContent = location.protocol === "https:" ? "https ✓" : "http (limited cameras)";
+
+    // GUI for numeric params
     const state = {
       Prompt: promptEl.value,
       Strength: 0.5,
@@ -150,111 +233,216 @@
       Live: false,
 
       Camera: "(click Scan)",
-      Facing: "user",
       Resolution: "1280x720",
       Flip_X: false,
       Flip_Y: false
     };
+    promptEl.addEventListener("input", () => { state.Prompt = promptEl.value; });
 
-    const gui = new GUI({ title: "Camera & Params" });
-    const gCam = gui.addFolder("Camera"); gCam.open();
+    const gui = new GUI({ title: "Params" });
+    const gSrc = gui.addFolder("Source");
     const gModel = gui.addFolder("Model"); gModel.open();
 
-    const ctrlCamera = gCam.add(state, "Camera", ["(click Scan)"]).name("Device").onChange(onCameraChanged);
-    gCam.add(state, "Facing", ["user", "environment", "none"]).onChange(restartStream);
-    gCam.add(state, "Resolution", ["640x480","1280x720","1920x1080"]).onChange(restartStream);
-    gCam.add(state, "Flip_X").onChange(()=>{});
-    gCam.add(state, "Flip_Y").onChange(()=>{});
+    // Webcam device dropdown appears after Scan
+    const ctrlCamera = gSrc.add(state, "Camera", ["(click Scan)"]).name("Device").onChange(() => restartWebcam());
+    gSrc.add(state, "Resolution", ["640x480","1280x720","1920x1080"]).onChange(()=> {
+      if (mode===MODE.WEBCAM) restartWebcam();
+    });
+    gSrc.add(state, "Flip_X").onChange(()=>{});
+    gSrc.add(state, "Flip_Y").onChange(()=>{});
 
     gModel.add(state, "Strength", 0.05, 1, 0.01);
     gModel.add(state, "Guidance", 0, 6, 0.1);
     gModel.add(state, "Steps", 2, 8, 1);
-    const ctrlLive = gModel.add(state, "Live").onChange(toggleLive);
 
-    // Keep state.Prompt in sync with big textarea
-    promptEl.addEventListener("input", () => { state.Prompt = promptEl.value; });
-
-    // Camera helpers
-    function stopStream() {
-      if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
+    // Mode switching
+    function setMode(m){
+      mode = m;
+      Object.values(sections).forEach(el => el.classList.remove("show"));
+      if (m===MODE.WEBCAM) { sections.webcam.classList.add("show"); srcTitle.textContent = "Source — Webcam"; }
+      else if (m===MODE.IMAGE){ sections.image.classList.add("show");  srcTitle.textContent = "Source — Uploaded Image"; }
+      else if (m===MODE.VIDEO){ sections.video.classList.add("show");  srcTitle.textContent = "Source — Video File"; }
+      else { sections.draw.classList.add("show");  srcTitle.textContent = "Source — Draw (SVG)"; }
+      chips.forEach(c=> c.classList.toggle("active", c.dataset.mode===m));
     }
+    chips.forEach(c => c.addEventListener("click", ()=> setMode(c.dataset.mode)));
 
-    function selectedDeviceId() {
+    // Webcam
+    function selectedDeviceId(){
       const map = ctrlCamera?._idMap || null;
       return map ? (map[state.Camera] || null) : null;
     }
-
-    function parseResolution() {
-      const [w, h] = state.Resolution.split("x").map(Number);
-      return { width: { ideal: w }, height: { ideal: h } };
+    function parseRes(){
+      const [w,h] = state.Resolution.split("x").map(Number);
+      return { width:{ ideal:w }, height:{ ideal:h } };
     }
-
-    async function restartStream() {
+    function stopWebcam(){ if (currentStream){ currentStream.getTracks().forEach(t=>t.stop()); currentStream=null; } }
+    async function restartWebcam(){
       if (!secure) return;
-      stopStream();
-      try {
+      if (mode!==MODE.WEBCAM) return;
+      stopWebcam();
+      try{
         const devId = selectedDeviceId();
-        const base = { audio: false, video: { ...parseResolution() } };
+        const base = { audio:false, video:{ ...parseRes() } };
         if (devId) base.video.deviceId = { exact: devId };
-        else if (state.Facing !== "none") base.video.facingMode = { ideal: state.Facing };
+        else base.video.facingMode = { ideal: facing };
         const stream = await navigator.mediaDevices.getUserMedia(base);
         currentStream = stream; cam.srcObject = stream; await cam.play();
         statusEl.textContent = "camera ready";
-      } catch (e) {
+      }catch(e){
         statusEl.textContent = "camera error";
         console.warn("getUserMedia failed", e);
       }
     }
+    async function scanCameras(){
+      if (!secure) return;
+      try { const tmp=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); tmp.getTracks().forEach(t=>t.stop()); } catch{}
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d=>d.kind==="videoinput");
+      const labels = cams.map((d,i)=> d.label || `Camera ${i+1}`);
+      const ids = cams.map(d=>d.deviceId);
+      if (!labels.length){
+        ctrlCamera.options(["(none found)"]).setValue("(none found)");
+        ctrlCamera._idMap = {};
+        return;
+      }
+      const map = {}; labels.forEach((name,i)=> map[name]=ids[i]);
+      ctrlCamera._idMap = map;
+      const names = Object.keys(map);
+      ctrlCamera.options(names);
+      if (!names.includes(state.Camera)) ctrlCamera.setValue(names[0]);
+      await restartWebcam();
+    }
+    btnScan.onclick = () => scanCameras();
+    btnSwapFacing.onclick = async () => { facing = (facing==="user"?"environment":"user"); ctrlCamera.setValue("(click Scan)"); await restartWebcam(); };
 
-    async function populateCameras() {
-      try {
-        if (!secure) return;
-        try { const tmp = await navigator.mediaDevices.getUserMedia({video:true,audio:false}); tmp.getTracks().forEach(t=>t.stop()); } catch {}
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const cams = devices.filter(d => d.kind === "videoinput");
-        const labels = cams.map((d,i)=> d.label || `Camera ${i+1}`);
-        const ids = cams.map(d => d.deviceId);
+    // Upload image
+    fileImage.addEventListener("change", async (e)=>{
+      const f = e.target.files?.[0]; if (!f) return;
+      const url = URL.createObjectURL(f);
+      imgUpload.onload = ()=> URL.revokeObjectURL(url);
+      imgUpload.src = url;
+      setMode(MODE.IMAGE);
+    });
 
-        if (!labels.length) {
-          ctrlCamera.options(["(none found)"]).setValue("(none found)");
-          ctrlCamera._idMap = {};
-          return;
-        }
-        const map = {}; labels.forEach((name, idx) => map[name] = ids[idx]);
-        ctrlCamera._idMap = map;
-        const names = Object.keys(map);
-        ctrlCamera.options(names);
-        if (!names.includes(state.Camera)) ctrlCamera.setValue(names[0]);
-        await restartStream();
-      } catch (e) {
-        console.warn("populateCameras failed", e);
+    // Video file
+    fileVideo.addEventListener("change", async (e)=>{
+      const f = e.target.files?.[0]; if (!f) return;
+      const url = URL.createObjectURL(f);
+      vidFile.onloadeddata = ()=> { /* ready */ };
+      vidFile.src = url;
+      setMode(MODE.VIDEO);
+    });
+
+    // DRAW (SVG) — simple freehand lines
+    let drawing=false, lastPt=null, strokeW=3;
+    const strokes=[]; // for undo
+    drawThin.onclick = ()=> strokeW=3;
+    drawThick.onclick = ()=> strokeW=8;
+    drawClear.onclick = ()=> { while (drawSvg.firstChild) drawSvg.removeChild(drawSvg.firstChild); strokes.length=0; };
+    drawUndo.onclick = ()=> { const n=drawSvg.childNodes.length; if (n>0){ drawSvg.removeChild(drawSvg.lastChild); strokes.pop(); } };
+
+    function svgPoint(evt){
+      const rect = drawSvg.getBoundingClientRect();
+      const x = (evt.clientX - rect.left) * (drawSvg.viewBox.baseVal.width  || rect.width)  / rect.width;
+      const y = (evt.clientY - rect.top)  * (drawSvg.viewBox.baseVal.height || rect.height) / rect.height;
+      return {x,y};
+    }
+    function ensureViewBox(){
+      if (!drawSvg.getAttribute("viewBox")){
+        const r = drawSvg.getBoundingClientRect();
+        drawSvg.setAttribute("viewBox", `0 0 ${Math.max(1,r.width)} ${Math.max(1,r.height)}`);
+      }
+    }
+    function startDraw(e){
+      ensureViewBox();
+      drawing=true;
+      const p = svgPoint(e);
+      lastPt=p;
+      const pl = document.createElementNS("http://www.w3.org/2000/svg","polyline");
+      pl.setAttribute("fill","none");
+      pl.setAttribute("stroke","#ffffff");
+      pl.setAttribute("stroke-linecap","round");
+      pl.setAttribute("stroke-linejoin","round");
+      pl.setAttribute("stroke-width", String(strokeW));
+      pl.setAttribute("points", `${p.x},${p.y}`);
+      drawSvg.appendChild(pl);
+      strokes.push(pl);
+    }
+    function moveDraw(e){
+      if (!drawing) return;
+      const p = svgPoint(e);
+      const pl = strokes[strokes.length-1];
+      pl.setAttribute("points", pl.getAttribute("points")+" "+`${p.x},${p.y}`);
+      lastPt=p;
+    }
+    function endDraw(){ drawing=false; lastPt=null; }
+
+    drawSvg.addEventListener("pointerdown", e=>{ drawSvg.setPointerCapture(e.pointerId); startDraw(e); });
+    drawSvg.addEventListener("pointermove", e=> moveDraw(e));
+    drawSvg.addEventListener("pointerup",   ()=> endDraw());
+    drawSvg.addEventListener("pointercancel",()=> endDraw());
+    drawSvg.addEventListener("touchstart", e=> e.preventDefault(), {passive:false});
+    drawSvg.addEventListener("gesturestart", e=> e.preventDefault());
+
+    // Frame capture from current mode
+    function sizeHidden(w,h){ hidden.width=w; hidden.height=h; }
+
+    async function svgToCanvasBlob(quality=0.9){
+      const r = drawSvg.getBoundingClientRect();
+      const w = Math.round(r.width), h = Math.round(r.height);
+      ensureViewBox();
+      const svgStr = new XMLSerializer().serializeToString(drawSvg);
+      const blob = new Blob([svgStr], {type:"image/svg+xml"});
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.decoding = "async";
+      img.src = url;
+      await img.decode().catch(()=>{});
+      sizeHidden(w,h);
+      ctx.clearRect(0,0,w,h);
+      ctx.drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      return new Promise(res => hidden.toBlob(res, "image/jpeg", quality));
+    }
+
+    async function grabFrameBlob(quality=0.85){
+      if (mode===MODE.WEBCAM){
+        if (!cam.videoWidth || !cam.videoHeight) return null;
+        const w=cam.videoWidth, h=cam.videoHeight;
+        sizeHidden(w,h);
+        ctx.save();
+        ctx.translate(state.Flip_X ? w : 0, state.Flip_Y ? h : 0);
+        ctx.scale(state.Flip_X ? -1 : 1, state.Flip_Y ? -1 : 1);
+        ctx.drawImage(cam,0,0,w,h);
+        ctx.restore();
+        return new Promise(r=> hidden.toBlob(r,"image/jpeg",quality));
+      } else if (mode===MODE.IMAGE){
+        if (!imgUpload.naturalWidth) return null;
+        const w=imgUpload.naturalWidth, h=imgUpload.naturalHeight;
+        sizeHidden(w,h);
+        ctx.drawImage(imgUpload,0,0,w,h);
+        return new Promise(r=> hidden.toBlob(r,"image/jpeg",quality));
+      } else if (mode===MODE.VIDEO){
+        if (!vidFile.videoWidth || !vidFile.videoHeight) return null;
+        const w=vidFile.videoWidth, h=vidFile.videoHeight;
+        sizeHidden(w,h);
+        ctx.drawImage(vidFile,0,0,w,h);
+        return new Promise(r=> hidden.toBlob(r,"image/jpeg",quality));
+      } else {
+        return await svgToCanvasBlob(quality);
       }
     }
 
-    function onCameraChanged() { restartStream(); }
-
-    // Frame capture
-    async function grabFrameBlob(quality = 0.85) {
-      const w = cam.videoWidth, h = cam.videoHeight;
-      if (!w || !h) return null;
-      hidden.width = w; hidden.height = h;
-      ctx.save();
-      ctx.translate(state.Flip_X ? w : 0, state.Flip_Y ? h : 0);
-      ctx.scale(state.Flip_X ? -1 : 1, state.Flip_Y ? -1 : 1);
-      ctx.drawImage(cam, 0, 0, w, h);
-      ctx.restore();
-      return new Promise(resolve => hidden.toBlob(resolve, "image/jpeg", quality));
-    }
-
     // Inference
-    async function processOne() {
+    async function processOne(){
       if (inFlight) return;
       const frameBlob = await grabFrameBlob(0.85);
-      if (!frameBlob) { statusEl.textContent = "no frame yet"; return; }
+      if (!frameBlob) { statusEl.textContent="no frame yet"; return; }
 
       inFlight = true;
       const t0 = performance.now();
-      try {
+      try{
         statusEl.textContent = "processing…";
         const fd = new FormData();
         fd.append("frame", frameBlob, "frame.jpg");
@@ -263,10 +451,10 @@
         fd.append("guidance", String(state.Guidance));
         fd.append("steps", String(state.Steps));
 
-        const res = await fetch("/process", { method: "POST", body: fd });
-        if (!res.ok) {
+        const res = await fetch("/process", { method:"POST", body:fd });
+        if (!res.ok){
           let msg = `HTTP ${res.status}`;
-          try { const j = await res.json(); if (j?.error) msg = j.error; } catch {}
+          try{ const j=await res.json(); if (j?.error) msg=j.error; }catch{}
           throw new Error(msg);
         }
         const outBlob = await res.blob();
@@ -275,13 +463,13 @@
         out.dataset.url = url;
         out.src = url;
         statusEl.textContent = "done";
-      } catch (e) {
-        console.warn("[UI] /process error:", e);
+      }catch(e){
+        console.warn("/process error", e);
         statusEl.textContent = "error";
-      } finally {
+      }finally{
         const dt = performance.now() - t0;
-        avgLatencyMs = 0.8 * avgLatencyMs + 0.2 * dt;
-        if (state.Live && liveTimer) {
+        avgLatencyMs = 0.8*avgLatencyMs + 0.2*dt;
+        if (state.Live && liveTimer){
           clearInterval(liveTimer);
           liveTimer = setInterval(processOne, Math.max(200, Math.round(avgLatencyMs)));
         }
@@ -289,28 +477,26 @@
       }
     }
 
-    function toggleLive(on) {
+    function toggleLive(on){
       state.Live = !!on;
-      if (on) {
+      if (on){
         statusEl.textContent = "live…";
         if (liveTimer) clearInterval(liveTimer);
         liveTimer = setInterval(processOne, Math.max(200, Math.round(avgLatencyMs)));
-        ctrlLive.setValue(true);
       } else {
         statusEl.textContent = "idle";
         if (liveTimer) clearInterval(liveTimer);
         liveTimer = null;
-        ctrlLive.setValue(false);
       }
     }
 
-    // Actions
-    btnScan.onclick  = () => populateCameras();
-    btnStart.onclick = () => toggleLive(true);
-    btnStop.onclick  = () => toggleLive(false);
-    btnSnap.onclick  = () => processOne();
+    // Action buttons under panes
+    document.getElementById("btnStart").onclick = ()=> toggleLive(true);
+    document.getElementById("btnStop").onclick  = ()=> toggleLive(false);
+    document.getElementById("btnSnap").onclick  = ()=> processOne();
 
-    // No auto-scan; user clicks "Scan cameras"
+    // Default mode
+    setMode(MODE.WEBCAM);
   </script>
 </body>
 </html>
