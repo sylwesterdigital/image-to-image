@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+  />
+  <title>Webcam ⇢ Real-Time LCM (img2img)</title>
+  <style>
+    :root { --gap: 12px; }
+    html, body { margin: 0; padding: 0; background: #0b0b0c; color: #e9e9ea; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .wrap { display: flex; flex-direction: column; min-height: 100svh; }
+    header { padding: 10px var(--gap); font-weight: 600; letter-spacing: .3px; }
+    .controls {
+      display: grid; gap: 8px var(--gap);
+      grid-template-columns: 1fr;
+      padding: 0 var(--gap) var(--gap);
+      align-items: center;
+    }
+    .controls .row { display: grid; grid-template-columns: 120px 1fr 64px; gap: 8px; align-items: center; }
+    .controls input[type="text"] { width: 100%; padding: 10px; background: #141416; color: #fff; border: 1px solid #2a2a2e; border-radius: 10px; }
+    .controls input[type="range"] { width: 100%; }
+    .controls .small { opacity: .8; font-size: 12px; text-align: right; }
+    .toggle {
+      display: inline-flex; align-items: center; gap: 8px; user-select: none; cursor: pointer; margin-top: 6px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--gap);
+      padding: 0 var(--gap) var(--gap);
+    }
+    .pane {
+      background: #111114; border: 1px solid #242428; border-radius: 14px; overflow: hidden; position: relative;
+      min-height: 40svh;
+    }
+    .pane h3 { position: absolute; z-index: 2; top: 8px; left: 10px; margin: 0; font-size: 12px; letter-spacing: .4px; opacity: .8; background: rgba(0,0,0,.4); padding: 4px 6px; border-radius: 8px; }
+    video, img, canvas { width: 100%; height: 100%; object-fit: cover; display: block; }
+    footer { padding: 8px var(--gap); opacity: .7; font-size: 12px; }
+    @media (max-width: 800px) {
+      .grid { grid-template-columns: 1fr; }
+      .pane { min-height: 45svh; }
+      .controls .row { grid-template-columns: 1fr; }
+      .controls .small { text-align: left; }
+    }
+    button {
+      background: #2a2a2e; color: #fff; border: 1px solid #3a3a3f; border-radius: 10px; padding: 10px 14px; cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .pill { padding: 6px 10px; border-radius: 999px; border: 1px solid #2a2a2e; background: #151518; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>Webcam ⇢ Real-Time LCM (img2img)</header>
+
+    <div class="controls">
+      <input id="prompt" type="text" placeholder="Prompt (e.g., cinematic portrait, dramatic lighting)" />
+      <div class="row">
+        <label>Strength</label>
+        <input id="strength" type="range" min="0.05" max="1" step="0.01" value="0.5" />
+        <div class="small"><span id="strengthVal">0.50</span></div>
+      </div>
+      <div class="row">
+        <label>Guidance</label>
+        <input id="guidance" type="range" min="1" max="13" step="0.1" value="4" />
+        <div class="small"><span id="guidanceVal">4.0</span></div>
+      </div>
+      <div class="row">
+        <label>Steps</label>
+        <input id="steps" type="range" min="2" max="8" step="1" value="4" />
+        <div class="small"><span id="stepsVal">4</span></div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+        <button id="snap">Process one frame</button>
+        <label class="toggle pill">
+          <input id="live" type="checkbox" />
+          <span>Live loop</span>
+        </label>
+        <span id="status" class="pill">idle</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="pane">
+        <h3>Webcam</h3>
+        <video id="cam" autoplay playsinline muted></video>
+      </div>
+      <div class="pane">
+        <h3>Output</h3>
+        <img id="out" alt="Model output" />
+      </div>
+    </div>
+
+    <footer>
+      Keep “Steps” low (2–4) for speed. “Strength” ≈ how much to deviate from the webcam frame.
+    </footer>
+  </div>
+
+  <canvas id="hidden" style="display:none;"></canvas>
+
+  <script>
+    const cam = document.getElementById("cam");
+    const out = document.getElementById("out");
+    const hidden = document.getElementById("hidden");
+    const ctx = hidden.getContext("2d");
+    const snapBtn = document.getElementById("snap");
+    const liveToggle = document.getElementById("live");
+    const statusEl = document.getElementById("status");
+
+    const promptEl = document.getElementById("prompt");
+    const strengthEl = document.getElementById("strength");
+    const guidanceEl = document.getElementById("guidance");
+    const stepsEl = document.getElementById("steps");
+
+    const strengthVal = document.getElementById("strengthVal");
+    const guidanceVal = document.getElementById("guidanceVal");
+    const stepsVal = document.getElementById("stepsVal");
+
+    function fmt(n, digs=2){ return Number(n).toFixed(digs); }
+    strengthEl.oninput = () => strengthVal.textContent = fmt(strengthEl.value);
+    guidanceEl.oninput = () => guidanceVal.textContent = fmt(guidanceEl.value,1);
+    stepsEl.oninput = () => stepsVal.textContent = stepsEl.value;
+
+    let liveTimer = null;
+    const LIVE_INTERVAL_MS = 1000; // adjust if GPU is beefy
+
+    async function initCam() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      cam.srcObject = stream;
+      await cam.play();
+    }
+
+    async function grabFrameBlob(quality = 0.9) {
+      const w = cam.videoWidth;
+      const h = cam.videoHeight;
+      if (!w || !h) return null;
+      hidden.width = w;
+      hidden.height = h;
+      ctx.drawImage(cam, 0, 0, w, h);
+      return new Promise(resolve => hidden.toBlob(resolve, "image/jpeg", quality));
+    }
+
+    async function processOne() {
+      try {
+        statusEl.textContent = "processing…";
+        snapBtn.disabled = true;
+
+        const frameBlob = await grabFrameBlob(0.8);
+        if (!frameBlob) return;
+
+        const fd = new FormData();
+        fd.append("frame", frameBlob, "frame.jpg");
+        fd.append("prompt", promptEl.value || "");
+        fd.append("strength", strengthEl.value);
+        fd.append("guidance", guidanceEl.value);
+        fd.append("steps", stepsEl.value);
+
+        const res = await fetch("/process", { method: "POST", body: fd });
+        if (!res.ok) throw new Error(await res.text());
+        const outBlob = await res.blob();
+
+        // Revoke previous object URL to avoid memory leaks
+        if (out.dataset.url) URL.revokeObjectURL(out.dataset.url);
+        const url = URL.createObjectURL(outBlob);
+        out.dataset.url = url;
+        out.src = url;
+        statusEl.textContent = "done";
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = "error";
+      } finally {
+        snapBtn.disabled = false;
+      }
+    }
+
+    liveToggle.addEventListener("change", () => {
+      if (liveToggle.checked) {
+        statusEl.textContent = "live…";
+        liveTimer = setInterval(processOne, LIVE_INTERVAL_MS);
+      } else {
+        statusEl.textContent = "idle";
+        clearInterval(liveTimer);
+        liveTimer = null;
+      }
+    });
+
+    snapBtn.addEventListener("click", processOne);
+    initCam();
+  </script>
+</body>
+</html>
