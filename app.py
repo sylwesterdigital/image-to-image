@@ -1,9 +1,11 @@
-# app.py — fixes erratic LCM steps + safer /process + HTTPS
+# app.py — full file
 import io
 import os
+import time
+from threading import Lock
 from typing import Optional
 
-from flask import Flask, request, send_file, render_template, jsonify
+from flask import Flask, request, send_file, render_template, jsonify, g
 from PIL import Image
 
 import torch
@@ -44,18 +46,47 @@ pipe.safety_checker = None
 if device == "cpu":
     pipe.enable_model_cpu_offload()
 
+_infer_lock = Lock()  # serialize scheduler access
+
 # -----------------------------
 # Flask
 # -----------------------------
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
+
+@app.before_request
+def _stamp_t0():
+    g.t0 = time.time()
+
+
+@app.after_request
+def _log_request(resp):
+    try:
+        dt = (time.time() - g.t0) * 1000
+        print(f"{request.method} {request.path} -> {resp.status_code} ({dt:.0f} ms)")
+    except Exception:
+        pass
+    return resp
+
+
+@app.get("/health")
+def health():
+    return {"ok": True}, 200
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
 
+
 @app.route("/favicon.ico")
 def favicon():
-    return app.send_static_file("favicon.ico")
+    # Optional static/favicon.ico; fallback to 204 if missing
+    try:
+        return app.send_static_file("favicon.ico")
+    except Exception:
+        return ("", 204)
+
 
 def _to_rgb(img: Image.Image, max_side: int = 640) -> Image.Image:
     if img.mode != "RGB":
@@ -66,16 +97,17 @@ def _to_rgb(img: Image.Image, max_side: int = 640) -> Image.Image:
         img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
     return img
 
+
 @app.post("/process")
 def process():
     file = request.files.get("frame")
     if file is None:
-        return ("No frame", 400)
+        return jsonify({"error": "No frame"}), 400
 
     prompt: str = request.form.get("prompt", "").strip() or "high quality photo, cinematic lighting"
     try:
         strength = float(request.form.get("strength", "0.5"))
-        guidance = float(request.form.get("guidance", "1.0"))  # LCM likes low CFG (≈0–2)
+        guidance = float(request.form.get("guidance", "1.0"))
         steps = int(request.form.get("steps", "4"))
     except Exception:
         strength, guidance, steps = 0.5, 1.0, 4
@@ -87,36 +119,40 @@ def process():
     img = Image.open(file.stream)
     img = _to_rgb(img, max_side=640)
 
-    # --- IMPORTANT: ensure LCM scheduler state is reset every call ---
-    # Some diffusers versions leave _step_index=None if timesteps weren't set explicitly.
-    pipe.scheduler.set_timesteps(steps, device=pipe.device)
-    if getattr(pipe.scheduler, "_step_index", None) is None:
-        pipe.scheduler._step_index = 0  # guard for buggy sched init paths
-
-    kwargs = dict(
-        prompt=prompt,
-        image=img,
-        num_inference_steps=steps,
-        guidance_scale=guidance,
-        strength=strength,
-        generator=None,
-    )
-
     try:
-        with torch.inference_mode():
-            if device == "cuda":
-                with torch.autocast("cuda"):
-                    out = pipe(**kwargs).images[0]
-            else:
-                out = pipe(**kwargs).images[0]
+        with _infer_lock:
+            pipe.scheduler.set_timesteps(steps, device=pipe.device)
+            if getattr(pipe.scheduler, "_step_index", None) is None:
+                pipe.scheduler._step_index = 0
+
+            with torch.inference_mode():
+                if device == "cuda":
+                    with torch.autocast("cuda"):
+                        out = pipe(
+                            prompt=prompt,
+                            image=img,
+                            num_inference_steps=steps,
+                            guidance_scale=guidance,
+                            strength=strength,
+                            generator=None,
+                        ).images[0]
+                else:
+                    out = pipe(
+                        prompt=prompt,
+                        image=img,
+                        num_inference_steps=steps,
+                        guidance_scale=guidance,
+                        strength=strength,
+                        generator=None,
+                    ).images[0]
     except Exception as e:
-        # return JSON error so the frontend can back off gracefully
         return jsonify({"error": str(e)}), 500
 
     buf = io.BytesIO()
     out.save(buf, format="JPEG", quality=90)
     buf.seek(0)
     return send_file(buf, mimetype="image/jpeg")
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))

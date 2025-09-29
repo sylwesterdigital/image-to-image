@@ -1,4 +1,4 @@
-<!-- templates/index.html — lil-gui + adaptive live loop + in-flight guard -->
+<!-- templates/index.html — full file (relocated buttons, big prompt under panes, speed/quality tips) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -17,25 +17,44 @@
     }
   </script>
   <style>
-    :root { --gap: 12px; }
-    html, body { margin: 0; padding: 0; background: #0b0b0c; color: #e9e9ea; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    .wrap { display: flex; flex-direction: column; min-height: 100svh; }
-    header { padding: 10px var(--gap); font-weight: 600; letter-spacing: .3px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); padding: 0 var(--gap) var(--gap); }
-    .pane { background: #111114; border: 1px solid #242428; border-radius: 14px; overflow: hidden; position: relative; min-height: 40svh; }
-    .pane h3 { position: absolute; z-index: 2; top: 8px; left: 10px; margin: 0; font-size: 12px; letter-spacing: .4px; opacity: .8; background: rgba(0,0,0,.4); padding: 4px 6px; border-radius: 8px; }
-    video, img, canvas { width: 100%; height: 100%; object-fit: cover; display: block; }
-    footer { padding: 8px var(--gap); opacity: .7; font-size: 12px; }
-    #overlay {
-      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-      background: rgba(0,0,0,.8); color: #fff; font: 14px/1.6 system-ui, sans-serif; z-index: 9999; text-align: center; padding: 24px;
+    :root { --gap: 14px; --panel:#111114; --border:#242428; --text:#e9e9ea; --muted:#b8b8be; }
+    html, body { margin:0; padding:0; background:#0b0b0c; color:var(--text); font: 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .wrap { display:flex; flex-direction:column; min-height:100svh; }
+    header { padding:10px var(--gap); font-weight:700; letter-spacing:.3px; font-size:16px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: var(--gap); padding: 0 var(--gap) var(--gap); }
+    .pane { background:var(--panel); border:1px solid var(--border); border-radius:14px; overflow:hidden; position:relative; min-height:40svh; }
+    .pane h3 { position:absolute; z-index:2; top:8px; left:10px; margin:0; font-size:12px; letter-spacing:.3px; opacity:.8; background:rgba(0,0,0,.35); padding:4px 6px; border-radius:8px; }
+    video, img, canvas { width:100%; height:100%; object-fit:cover; display:block; }
+    #overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.8); color:#fff; z-index:9999; text-align:center; padding:24px; }
+    #overlay.show { display:flex; }
+
+    /* Controls area under the panes */
+    .controls { display:grid; grid-template-columns: 1fr; gap: var(--gap); padding: 0 var(--gap) var(--gap); }
+    .action-row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .action-row .spacer { flex:1; }
+    .btn {
+      background:#2a2a2e; color:#fff; border:1px solid #3a3a3f; border-radius:10px; padding:10px 14px; cursor:pointer;
     }
-    #overlay.show { display: flex; }
-    @media (max-width: 800px) {
+    .btn:disabled { opacity:.55; cursor:not-allowed; }
+    .status { font-size:12px; opacity:.9; padding:6px 10px; border-radius:999px; border:1px solid #2a2a2e; background:#151518; }
+    .row { display:grid; grid-template-columns: 1fr; gap:8px; }
+    label { font-size:12px; color:var(--muted); }
+    textarea {
+      width:100%; min-height:90px; resize:vertical; padding:10px 12px; border-radius:12px;
+      border:1px solid var(--border); background:#141416; color:#fff; font: 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    }
+
+    .tips { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:12px; color:#d7d7db; }
+    .tips strong { color:#fff; }
+    .tips ul { margin:8px 0 0 18px; padding:0; }
+    .tips li { margin:4px 0; }
+
+    footer { padding: 8px var(--gap) var(--gap); opacity:.7; font-size:12px; }
+
+    @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
-      .pane { min-height: 45svh; }
+      .pane { min-height:45svh; }
     }
-    .pill { position: fixed; bottom: 12px; left: 12px; padding: 6px 10px; border-radius: 999px; border: 1px solid #2a2a2e; background: #151518; font-size: 12px; opacity: .9; }
   </style>
 </head>
 <body>
@@ -48,6 +67,7 @@
 
   <div class="wrap">
     <header>Webcam ⇢ Real-Time LCM (img2img)</header>
+
     <div class="grid">
       <div class="pane">
         <h3>Webcam</h3>
@@ -58,84 +78,110 @@
         <img id="out" alt="Model output" />
       </div>
     </div>
-    <footer>Steps 2–4 for speed · Strength controls deviation.</footer>
+
+    <section class="controls">
+      <div class="action-row">
+        <button id="btnScan"  class="btn">Scan cameras</button>
+        <button id="btnStart" class="btn">Start live</button>
+        <button id="btnStop"  class="btn">Stop live</button>
+        <button id="btnSnap"  class="btn">Process one frame</button>
+        <span class="spacer"></span>
+        <span id="httpHint" class="status">http/https</span>
+        <span id="status" class="status">idle</span>
+      </div>
+
+      <div class="row">
+        <label for="promptInput">Prompt</label>
+        <textarea id="promptInput" placeholder="Describe the look you want (e.g., ‘cinematic portrait, dramatic lighting, shallow depth of field’)">cinematic portrait, dramatic lighting</textarea>
+      </div>
+
+      <div class="tips">
+        <strong>Speed vs. Quality</strong>
+        <ul>
+          <li><strong>Faster:</strong> Steps 2–4, Guidance 0–2, lower capture resolution (e.g., 640×480).</li>
+          <li><strong>More stylized:</strong> Higher Strength (0.6–0.9) deviates more from the webcam frame.</li>
+          <li><strong>More faithful:</strong> Lower Strength (0.2–0.5) keeps the original structure.</li>
+          <li><strong>Sharper but slower:</strong> Steps 6–8 and higher resolution.</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer>Keep Steps low (2–4) for real-time feel. LCM likes low Guidance (0–2). Use HTTPS so browsers show camera devices.</footer>
   </div>
 
-  <span id="status" class="pill">idle</span>
   <canvas id="hidden" style="display:none;"></canvas>
 
   <script type="module">
     import { GUI } from "lil-gui";
 
-    // --- Secure-context gate ---
+    // Secure-context gate
     const overlay = document.getElementById("overlay");
     const secure = location.protocol === "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
     if (secure) overlay.classList.remove("show");
 
-    // --- DOM refs ---
+    // DOM refs
     const cam = document.getElementById("cam");
     const out = document.getElementById("out");
     const hidden = document.getElementById("hidden");
     const ctx = hidden.getContext("2d");
     const statusEl = document.getElementById("status");
+    const promptEl = document.getElementById("promptInput");
 
-    // --- State ---
+    // Action buttons
+    const btnScan  = document.getElementById("btnScan");
+    const btnStart = document.getElementById("btnStart");
+    const btnStop  = document.getElementById("btnStop");
+    const btnSnap  = document.getElementById("btnSnap");
+    const httpHint = document.getElementById("httpHint");
+    httpHint.textContent = location.protocol === "https:" ? "https ✓" : "http (limited camera labels)";
+
+    // State
     let currentStream = null;
     let inFlight = false;
-    let avgLatencyMs = 900;   // adaptive pacing
+    let avgLatencyMs = 900;
     let liveTimer = null;
 
-    // --- lil-gui params ---
+    // GUI (compact for camera + params)
     const state = {
-      Prompt: "cinematic portrait, dramatic lighting",
+      Prompt: promptEl.value,
       Strength: 0.5,
-      Guidance: 1.0,         // LCM sweet spot: ~0–2
+      Guidance: 1.0,
       Steps: 4,
       Live: false,
 
-      Camera: "(choose)",
+      Camera: "(click Scan)",
       Facing: "user",
       Resolution: "1280x720",
       Flip_X: false,
-      Flip_Y: false,
-      Refresh_Cameras: () => populateCameras(true),
-      Process_Frame: () => processOne(),
-      Start_Live: () => guiControllers.Live.setValue(true),
-      Stop_Live:  () => guiControllers.Live.setValue(false)
+      Flip_Y: false
     };
 
-    // --- GUI setup ---
-    const gui = new GUI({ title: "Controls" });
+    const gui = new GUI({ title: "Camera & Params" });
     const gCam = gui.addFolder("Camera"); gCam.open();
     const gModel = gui.addFolder("Model"); gModel.open();
 
-    const guiControllers = {
-      Camera: gCam.add(state, "Camera", ["(loading…)"]).name("Device").onChange(onCameraChanged),
-      Facing: gCam.add(state, "Facing", ["user", "environment", "none"]).onChange(restartStream),
-      Resolution: gCam.add(state, "Resolution", ["640x480","1280x720","1920x1080"]).onChange(restartStream),
-      Flip_X: gCam.add(state, "Flip_X").onChange(()=> drawFlipPreview()),
-      Flip_Y: gCam.add(state, "Flip_Y").onChange(()=> drawFlipPreview()),
-      Refresh: gCam.add(state, "Refresh_Cameras").name("↻ Rescan"),
+    const ctrlCamera = gCam.add(state, "Camera", ["(click Scan)"]).name("Device").onChange(onCameraChanged);
+    gCam.add(state, "Facing", ["user", "environment", "none"]).onChange(restartStream);
+    gCam.add(state, "Resolution", ["640x480","1280x720","1920x1080"]).onChange(restartStream);
+    gCam.add(state, "Flip_X").onChange(()=>{});
+    gCam.add(state, "Flip_Y").onChange(()=>{});
 
-      Prompt: gModel.add(state, "Prompt"),
-      Strength: gModel.add(state, "Strength", 0.05, 1, 0.01),
-      Guidance: gModel.add(state, "Guidance", 0, 6, 0.1),
-      Steps: gModel.add(state, "Steps", 2, 8, 1),
-      Live: gModel.add(state, "Live").onChange(toggleLive),
-      Snap: gModel.add(state, "Process_Frame").name("Process one frame"),
-      Start: gModel.add(state, "Start_Live").name("Start live"),
-      Stop: gModel.add(state, "Stop_Live").name("Stop live"),
-    };
+    gModel.add(state, "Strength", 0.05, 1, 0.01);
+    gModel.add(state, "Guidance", 0, 6, 0.1);
+    gModel.add(state, "Steps", 2, 8, 1);
+    const ctrlLive = gModel.add(state, "Live").onChange(toggleLive);
 
-    // --- Cameras ---
+    // Keep state.Prompt in sync with big textarea
+    promptEl.addEventListener("input", () => { state.Prompt = promptEl.value; });
+
+    // Camera helpers
     function stopStream() {
       if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
     }
 
     function selectedDeviceId() {
-      const ctrl = guiControllers.Camera;
-      if (!ctrl || !ctrl._idMap) return null;
-      return ctrl._idMap[state.Camera] || null;
+      const map = ctrlCamera?._idMap || null;
+      return map ? (map[state.Camera] || null) : null;
     }
 
     function parseResolution() {
@@ -160,26 +206,25 @@
       }
     }
 
-    async function populateCameras(force=false) {
+    async function populateCameras() {
       try {
         if (!secure) return;
-        if (force) {
-          try { const tmp = await navigator.mediaDevices.getUserMedia({video:true,audio:false}); tmp.getTracks().forEach(t=>t.stop()); } catch {}
-        }
+        try { const tmp = await navigator.mediaDevices.getUserMedia({video:true,audio:false}); tmp.getTracks().forEach(t=>t.stop()); } catch {}
         const devices = await navigator.mediaDevices.enumerateDevices();
         const cams = devices.filter(d => d.kind === "videoinput");
         const labels = cams.map((d,i)=> d.label || `Camera ${i+1}`);
         const ids = cams.map(d => d.deviceId);
 
-        const ctrl = guiControllers.Camera;
-        ctrl._options.length = 0;
         if (!labels.length) {
-          ctrl.setOptions(["(none found)"]); ctrl.setValue("(none found)"); return;
+          ctrlCamera.options(["(none found)"]).setValue("(none found)");
+          ctrlCamera._idMap = {};
+          return;
         }
         const map = {}; labels.forEach((name, idx) => map[name] = ids[idx]);
-        ctrl._idMap = map;
-        ctrl.setOptions(Object.keys(map));
-        if (!Object.keys(map).includes(state.Camera)) ctrl.setValue(Object.keys(map)[0]);
+        ctrlCamera._idMap = map;
+        const names = Object.keys(map);
+        ctrlCamera.options(names);
+        if (!names.includes(state.Camera)) ctrlCamera.setValue(names[0]);
         await restartStream();
       } catch (e) {
         console.warn("populateCameras failed", e);
@@ -188,11 +233,7 @@
 
     function onCameraChanged() { restartStream(); }
 
-    // --- Frame capture ---
-    function drawFlipPreview() {
-      // no-op placeholder (flip handled in grabFrameBlob); keeps GUI responsive
-    }
-
+    // Frame capture
     async function grabFrameBlob(quality = 0.85) {
       const w = cam.videoWidth, h = cam.videoHeight;
       if (!w || !h) return null;
@@ -205,16 +246,16 @@
       return new Promise(resolve => hidden.toBlob(resolve, "image/jpeg", quality));
     }
 
-    // --- Inference + adaptive pacing ---
+    // Inference
     async function processOne() {
-      if (inFlight) return;   // prevent overlap
+      if (inFlight) return;
+      const frameBlob = await grabFrameBlob(0.85);
+      if (!frameBlob) { statusEl.textContent = "no frame yet"; return; }
+
       inFlight = true;
       const t0 = performance.now();
       try {
         statusEl.textContent = "processing…";
-        const frameBlob = await grabFrameBlob(0.85);
-        if (!frameBlob) { statusEl.textContent = "no frame yet"; return; }
-
         const fd = new FormData();
         fd.append("frame", frameBlob, "frame.jpg");
         fd.append("prompt", state.Prompt || "");
@@ -224,8 +265,9 @@
 
         const res = await fetch("/process", { method: "POST", body: fd });
         if (!res.ok) {
-          const err = await res.json().catch(()=>({error:"unknown"}));
-          throw new Error(err.error || `HTTP ${res.status}`);
+          let msg = `HTTP ${res.status}`;
+          try { const j = await res.json(); if (j?.error) msg = j.error; } catch {}
+          throw new Error(msg);
         }
         const outBlob = await res.blob();
         if (out.dataset.url) URL.revokeObjectURL(out.dataset.url);
@@ -234,11 +276,10 @@
         out.src = url;
         statusEl.textContent = "done";
       } catch (e) {
-        console.warn(e);
+        console.warn("[UI] /process error:", e);
         statusEl.textContent = "error";
       } finally {
         const dt = performance.now() - t0;
-        // EMA to adapt loop to actual latency (min interval 200ms)
         avgLatencyMs = 0.8 * avgLatencyMs + 0.2 * dt;
         if (state.Live && liveTimer) {
           clearInterval(liveTimer);
@@ -249,29 +290,27 @@
     }
 
     function toggleLive(on) {
+      state.Live = !!on;
       if (on) {
         statusEl.textContent = "live…";
         if (liveTimer) clearInterval(liveTimer);
         liveTimer = setInterval(processOne, Math.max(200, Math.round(avgLatencyMs)));
+        ctrlLive.setValue(true);
       } else {
         statusEl.textContent = "idle";
         if (liveTimer) clearInterval(liveTimer);
         liveTimer = null;
+        ctrlLive.setValue(false);
       }
     }
 
-    // --- Boot ---
-    (async function boot(){
-      if (!secure) return;
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        const legacy = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
-        if (legacy) {
-          navigator.mediaDevices = navigator.mediaDevices || {};
-          navigator.mediaDevices.getUserMedia = (c) => new Promise((res, rej) => legacy.call(navigator, c, res, rej));
-        }
-      }
-      await populateCameras(true);
-    })();
+    // Actions
+    btnScan.onclick  = () => populateCameras();
+    btnStart.onclick = () => toggleLive(true);
+    btnStop.onclick  = () => toggleLive(false);
+    btnSnap.onclick  = () => processOne();
+
+    // No auto-scan; user clicks "Scan cameras"
   </script>
 </body>
 </html>
