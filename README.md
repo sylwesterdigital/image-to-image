@@ -6,6 +6,10 @@ https://github.com/user-attachments/assets/dc103afa-a3dd-4bdb-ba02-65b8a643edda
 
 
 
+https://github.com/user-attachments/assets/86c00edc-d292-4166-a0cd-d49be345c7ed
+
+
+
 Dead-simple demo: left pane shows live webcam, right pane shows image-to-image output from a Real-Time Latent Consistency Model (LCM).
 Stack: **Flask + vanilla JS + lil-gui + Diffusers**. Works on macOS (Apple Silicon M1/M2 via **MPS**), NVIDIA CUDA, and CPU (slow).
 
@@ -192,3 +196,6 @@ python app.py
 ## License
 
 MIT (or choose a license). Add a proper `LICENSE` file if distributing.
+
+![oo](https://github.com/user-attachments/assets/f7976cc9-8e36-4ccd-856f-d3c6c8f88b56)
+
