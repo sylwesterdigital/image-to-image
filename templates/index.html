@@ -1,28 +1,19 @@
-<!-- templates/index.html — full file (4 source modes: webcam / upload image / video file / draw in SVG) -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta
-  name="viewport"
-  content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
-  />
-  <title>Realtime LCM (img2img)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>Realtime LCM (img2img) — SVG Draw + Layers V3</title>
   <link rel="icon" href="/static/favicon.ico" />
   <script type="importmap">
-    {
-      "imports": {
-        "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/dist/lil-gui.esm.min.js"
-      }
-    }
+    { "imports": { "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/dist/lil-gui.esm.min.js" } }
   </script>
   <style>
-    :root { --gap: 14px; --panel:#111114; --border:#242428; --text:#e9e9ea; --muted:#b8b8be; }
+    :root { --gap:14px; --panel:#111114; --border:#242428; --text:#e9e9ea; --muted:#b8b8be; }
     html, body { margin:0; padding:0; background:#0b0b0c; color:var(--text); font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
     .wrap { display:flex; flex-direction:column; min-height:100svh; }
     header { padding:10px var(--gap); font-weight:700; letter-spacing:.3px; font-size:16px; }
 
-    /* Source mode switcher */
     .modes { display:flex; gap:8px; padding:0 var(--gap) var(--gap); flex-wrap:wrap; }
     .chip { background:#18181b; border:1px solid #2a2a2e; border-radius:999px; padding:8px 12px; cursor:pointer; user-select:none; }
     .chip.active { background:#2a2a2e; border-color:#3a3a3f; }
@@ -32,15 +23,44 @@
     .pane h3 { position:absolute; z-index:2; top:8px; left:10px; margin:0; font-size:12px; letter-spacing:.3px; opacity:.8; background:rgba(0,0,0,.35); padding:4px 6px; border-radius:8px; }
     video, img, canvas { width:100%; height:100%; object-fit:cover; display:block; }
 
-    /* layered sources in left pane; only one visible */
     .src { position:absolute; inset:0; display:none; }
     .src.show { display:block; }
 
-    /* Draw SVG surface */
+    /* Draw SVG surface + toolbar */
     #drawWrap { position:absolute; inset:0; }
-    #drawSvg { width:100%; height:100%; display:block; background:#0d0d10; touch-action:none; }
-    .draw-toolbar { position:absolute; right:10px; top:10px; display:flex; gap:8px; z-index:3; }
+    #drawSvg { width:100%; height:100%; display:block; background:transparent; touch-action:none; }
+    .draw-toolbar { position:absolute; right:10px; top:10px; display:flex; gap:8px; z-index:3; flex-wrap:wrap; align-items:center; }
     .btn-sm { background:#2a2a2e; color:#fff; border:1px solid #3a3a3f; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:12px; }
+    .btn-sm.active { outline:2px solid #5b5bff; }
+    .swatch { width:28px; height:28px; border-radius:8px; border:1px solid #3a3a3f; display:inline-flex; align-items:center; justify-content:center; }
+    .thickness { min-width:46px; text-align:center; font-size:12px; opacity:.8; }
+    .range { display:inline-flex; align-items:center; gap:6px; font-size:12px; opacity:.85; padding:2px 6px; border:1px solid #3a3a3f; border-radius:8px; }
+    input[type="color"] { appearance:none; background:transparent; border:none; width:24px; height:24px; cursor:pointer; }
+    input[type="range"] { cursor:pointer; }
+
+    /* Layers panel (right side inside Draw pane) */
+    .layers-panel {
+      position:absolute; top:54px; right:10px; z-index:3; width:160px;
+      background:#16161a; border:1px solid #2a2a2e; border-radius:12px; padding:8px; display:flex; flex-direction:column; gap:8px;
+    }
+    .layers-header { display:flex; align-items:center; justify-content:space-between; font-size:12px; opacity:.9; }
+    .layers-buttons { display:flex; gap:6px; }
+    .layers-buttons .btn-sm { padding:4px 8px; }
+    #layersList { display:flex; flex-direction:column; gap:6px; max-height:40svh; overflow:auto; }
+    .layer-item {
+      display:flex; align-items:center; gap:8px; padding:6px; border:1px solid #2a2a2e; border-radius:8px; cursor:pointer; background:#1b1b20;
+    }
+    .layer-item .box {
+      width:24px; height:16px; border:1px solid #3a3a3f; border-radius:4px; background:#0e0e12;
+    }
+    .layer-item.active { outline:2px solid #5b5bff; }
+
+    .layer-item .layer-rename { outline: none; }
+
+
+    .layer-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .layer-actions label.btn-sm { display:inline-flex; align-items:center; gap:6px; }
+    .layer-actions input[type=file] { display:none; }
 
     /* Controls under panes */
     .controls { display:grid; grid-template-columns: 1fr; gap: var(--gap); padding: 0 var(--gap) var(--gap); }
@@ -50,7 +70,7 @@
     .btn:disabled { opacity:.55; cursor:not-allowed; }
     .status { font-size:12px; opacity:.9; padding:6px 10px; border-radius:999px; border:1px solid #2a2a2e; background:#151518; }
     .row { display:grid; grid-template-columns: 1fr; gap:8px; }
-    label { font-size:12px; color:var(--muted); }
+    label { font-size:12px; color:#b8b8be; }
     textarea {
       width:100%; min-height:90px; resize:vertical; padding:10px 12px; border-radius:12px;
       border:1px solid var(--border); background:#141416; color:#fff; font: 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
@@ -61,29 +81,28 @@
     .tips ul { margin:8px 0 0 18px; padding:0; }
     .tips li { margin:4px 0; }
 
-    footer { padding: 8px var(--gap) var(--gap); opacity:.7; font-size:12px; }
-
     #overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.8); color:#fff; z-index:9999; text-align:center; padding:24px; }
     #overlay.show { display:flex; }
 
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
       .pane { min-height:45svh; }
+      .layers-panel { width: 46vw; }
     }
-  </style>
+
+/* Grab mode cursors */
+#drawSvg.grab { cursor: grab; }
+#drawSvg.grabbing { cursor: grabbing; }
+
+
+</style>
 </head>
 <body>
-  <div id="overlay" class="show">
-    <div>
-      <div style="font-size:18px; margin-bottom:8px;">Secure context required</div>
-      <div>Open via <strong>https://localhost:5000</strong> or <strong>https://&lt;your-mac-ip&gt;:5000</strong> and accept the certificate.</div>
-    </div>
-  </div>
+  <div id="overlay"></div>
 
   <div class="wrap">
     <header>Realtime LCM (img2img)</header>
 
-    <!-- Mode chips -->
     <div class="modes">
       <div class="chip active" data-mode="webcam">Webcam</div>
       <div class="chip" data-mode="image">Upload image</div>
@@ -92,11 +111,9 @@
     </div>
 
     <div class="grid">
-      <!-- LEFT: Source -->
       <div class="pane">
         <h3 id="srcTitle">Source</h3>
 
-        <!-- Webcam -->
         <div id="srcWebcam" class="src show">
           <video id="cam" autoplay playsinline muted></video>
           <div style="position:absolute;left:10px;bottom:10px;display:flex;gap:8px;">
@@ -105,13 +122,11 @@
           </div>
         </div>
 
-        <!-- Upload image -->
         <div id="srcImage" class="src">
           <input id="fileImage" type="file" accept="image/*" style="position:absolute;z-index:3;left:10px;top:10px" />
           <img id="imgUpload" alt="uploaded" />
         </div>
 
-        <!-- Video file -->
         <div id="srcVideo" class="src">
           <input id="fileVideo" type="file" accept="video/*" style="position:absolute;z-index:3;left:10px;top:10px" />
           <video id="vidFile" autoplay muted loop controls playsinline style="background:#000"></video>
@@ -121,25 +136,64 @@
         <div id="srcDraw" class="src">
           <div id="drawWrap">
             <div class="draw-toolbar">
-              <button id="drawClear" class="btn-sm">Clear</button>
+              <button id="toolFree"  class="btn-sm">Freehand</button>
+              <button id="toolLine"  class="btn-sm">Line</button>
+              <button id="toolRect"  class="btn-sm">Square</button>
+              <button id="toolCirc"  class="btn-sm">Circle</button>
+
+              <span class="thickness" id="thicknessReadout">3px</span>
+
+              <label class="swatch" title="Stroke color"><input id="colorPick" type="color" value="#ffffff" /></label>
+              <label class="swatch" title="Fill color"><input id="fillPick" type="color" value="#000000" /></label>
+              <span class="range" title="Fill opacity">
+                <span>fill α</span>
+                <input id="fillAlpha" type="range" min="0" max="1" step="0.05" value="0" />
+                <span id="fillAlphaVal">0.00</span>
+              </span>
+              <label class="swatch" title="Background color"><input id="bgPick" type="color" value="#0d0d10" /></label>
+
               <button id="drawUndo" class="btn-sm">Undo</button>
-              <button id="drawThin" class="btn-sm">Thin</button>
-              <button id="drawThick" class="btn-sm">Thick</button>
+              <button id="drawRedo" class="btn-sm">Redo</button>
+              <button id="drawClear" class="btn-sm">Clear</button>
+
+              <button id="toolErase" class="btn-sm">Eraser</button>
+              <span class="range" title="Eraser size">
+                <span>erase</span>
+                <input id="eraseSize" type="range" min="4" max="120" step="2" value="24" />
+                <span id="eraseSizeVal">24</span>
+              </span>
+
             </div>
-            <svg id="drawSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+
+            <!-- Layers panel -->
+            <div class="layers-panel" id="layersPanel">
+              <div class="layers-header">
+                <span>Layers</span>
+                <div class="layers-buttons">
+                  <button id="layerAdd" class="btn-sm" title="Add layer">+</button>
+                  <button id="layerDel" class="btn-sm" title="Delete selected layer">−</button>
+                </div>
+              </div>
+              <div id="layersList"></div>
+              <div class="layer-actions">
+                <label class="btn-sm">Load BG<input id="fileBg" type="file" accept="image/*"></label>
+                <label class="btn-sm">Load to Layer<input id="fileLayer" type="file" accept="image/*"></label>
+              </div>
+            </div>
+
+            <svg id="drawSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
           </div>
         </div>
       </div>
 
-      <!-- RIGHT: Output -->
       <div class="pane">
         <h3>Output</h3>
         <img id="out" alt="Model output" />
       </div>
     </div>
 
-    <!-- Controls -->
     <section class="controls">
+
       <div class="action-row">
         <button id="btnStart" class="btn">Start live</button>
         <button id="btnStop"  class="btn">Stop live</button>
@@ -148,6 +202,9 @@
         <span id="httpHint" class="status">http/https</span>
         <span id="status" class="status">idle</span>
       </div>
+
+      <div id="gallery" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
+
 
       <div class="row">
         <label for="promptInput">Prompt</label>
@@ -164,8 +221,6 @@
         </ul>
       </div>
     </section>
-
-    <footer>Use HTTPS so the browser exposes cameras. LCM prefers low Guidance (0–2). Keep Steps low for realtime feel.</footer>
   </div>
 
   <canvas id="hidden" style="display:none;"></canvas>
@@ -173,12 +228,7 @@
   <script type="module">
     import { GUI } from "lil-gui";
 
-    // Secure-context gate
-    const overlay = document.getElementById("overlay");
-    const secure = location.protocol === "https:" || ["localhost","127.0.0.1","[::1]"].includes(location.hostname);
-    if (secure) overlay.classList.remove("show");
-
-    // DOM refs
+    // --- DOM
     const chips = Array.from(document.querySelectorAll(".chip"));
     const srcTitle = document.getElementById("srcTitle");
     const sections = {
@@ -190,19 +240,23 @@
 
     const cam = document.getElementById("cam");
     const btnScan = document.getElementById("btnScan");
-    const btnSwapFacing = document.getElementById("btnSwapFacing");
-
+    const theSwapFacing = document.getElementById("btnSwapFacing");
     const fileImage = document.getElementById("fileImage");
     const imgUpload = document.getElementById("imgUpload");
-
     const fileVideo = document.getElementById("fileVideo");
     const vidFile = document.getElementById("vidFile");
 
     const drawSvg = document.getElementById("drawSvg");
     const drawClear = document.getElementById("drawClear");
     const drawUndo = document.getElementById("drawUndo");
-    const drawThin = document.getElementById("drawThin");
-    const drawThick = document.getElementById("drawThick");
+    const drawRedo = document.getElementById("drawRedo");
+
+    const layersPanel = document.getElementById("layersPanel");
+    const layersList  = document.getElementById("layersList");
+    const layerAddBtn = document.getElementById("layerAdd");
+    const layerDelBtn = document.getElementById("layerDel");
+    const fileBg      = document.getElementById("fileBg");
+    const fileLayer   = document.getElementById("fileLayer");
 
     const out = document.getElementById("out");
     const hidden = document.getElementById("hidden");
@@ -212,7 +266,25 @@
     const httpHint = document.getElementById("httpHint");
     const promptEl = document.getElementById("promptInput");
 
-    // state
+    const gallery = document.getElementById("gallery");
+
+    const toolBtns = {
+      free : document.getElementById("toolFree"),
+      line : document.getElementById("toolLine"),
+      rect : document.getElementById("toolRect"),
+      circ : document.getElementById("toolCirc"),
+      erase: document.getElementById("toolErase"),
+    };
+
+
+    const colorPick = document.getElementById("colorPick");
+    const fillPick  = document.getElementById("fillPick");
+    const fillAlpha = document.getElementById("fillAlpha");
+    const fillAlphaVal = document.getElementById("fillAlphaVal");
+    const bgPick    = document.getElementById("bgPick");
+    const thicknessReadout = document.getElementById("thicknessReadout");
+
+    // --- state
     const MODE = { WEBCAM:"webcam", IMAGE:"image", VIDEO:"video", DRAW:"draw" };
     let mode = MODE.WEBCAM;
 
@@ -220,283 +292,1330 @@
     let inFlight = false;
     let avgLatencyMs = 900;
     let liveTimer = null;
-    let facing = "user"; // for webcam
+    let facing = "user";
 
     httpHint.textContent = location.protocol === "https:" ? "https ✓" : "http (limited cameras)";
 
-    // GUI for numeric params
     const state = {
-      Prompt: promptEl.value,
-      Strength: 0.5,
-      Guidance: 1.0,
-      Steps: 4,
-      Live: false,
-
-      Camera: "(click Scan)",
-      Resolution: "1280x720",
-      Flip_X: false,
-      Flip_Y: false
+      Prompt: promptEl.value, Strength: 0.5, Guidance: 1.0, Steps: 4, Live: false,
+      Camera: "(click Scan)", Resolution: "1280x720", Flip_X: false, Flip_Y: false
     };
     promptEl.addEventListener("input", () => { state.Prompt = promptEl.value; });
 
     const gui = new GUI({ title: "Params" });
     const gSrc = gui.addFolder("Source");
     const gModel = gui.addFolder("Model"); gModel.open();
-
-    // Webcam device dropdown appears after Scan
     const ctrlCamera = gSrc.add(state, "Camera", ["(click Scan)"]).name("Device").onChange(() => restartWebcam());
-    gSrc.add(state, "Resolution", ["640x480","1280x720","1920x1080"]).onChange(()=> {
-      if (mode===MODE.WEBCAM) restartWebcam();
-    });
-    gSrc.add(state, "Flip_X").onChange(()=>{});
-    gSrc.add(state, "Flip_Y").onChange(()=>{});
-
+    gSrc.add(state, "Resolution", ["640x480","1280x720","1920x1080"]).onChange(()=> { if (mode===MODE.WEBCAM) restartWebcam(); });
+    gSrc.add(state, "Flip_X"); gSrc.add(state, "Flip_Y");
     gModel.add(state, "Strength", 0.05, 1, 0.01);
     gModel.add(state, "Guidance", 0, 6, 0.1);
     gModel.add(state, "Steps", 2, 8, 1);
 
-    // Mode switching
-    function setMode(m){
-      mode = m;
-      Object.values(sections).forEach(el => el.classList.remove("show"));
-      if (m===MODE.WEBCAM) { sections.webcam.classList.add("show"); srcTitle.textContent = "Source — Webcam"; }
-      else if (m===MODE.IMAGE){ sections.image.classList.add("show");  srcTitle.textContent = "Source — Uploaded Image"; }
-      else if (m===MODE.VIDEO){ sections.video.classList.add("show");  srcTitle.textContent = "Source — Video File"; }
-      else { sections.draw.classList.add("show");  srcTitle.textContent = "Source — Draw (SVG)"; }
-      chips.forEach(c=> c.classList.toggle("active", c.dataset.mode===m));
-    }
-    chips.forEach(c => c.addEventListener("click", ()=> setMode(c.dataset.mode)));
 
-    // Webcam
-    function selectedDeviceId(){
-      const map = ctrlCamera?._idMap || null;
-      return map ? (map[state.Camera] || null) : null;
+
+    // --- tiny generic selection + transform helpers (works for <image> and vectors) ---
+    let selectedNode = null;
+
+    function applyTransform(node){
+      const s  = parseFloat(node.dataset.s  || "1");
+      const tx = parseFloat(node.dataset.tx || "0");
+      const ty = parseFloat(node.dataset.ty || "0");
+      node.setAttribute("transform", `translate(${tx} ${ty}) scale(${s})`);
     }
-    function parseRes(){
-      const [w,h] = state.Resolution.split("x").map(Number);
-      return { width:{ ideal:w }, height:{ ideal:h } };
-    }
-    function stopWebcam(){ if (currentStream){ currentStream.getTracks().forEach(t=>t.stop()); currentStream=null; } }
-    async function restartWebcam(){
-      if (!secure) return;
-      if (mode!==MODE.WEBCAM) return;
-      stopWebcam();
-      try{
-        const devId = selectedDeviceId();
-        const base = { audio:false, video:{ ...parseRes() } };
-        if (devId) base.video.deviceId = { exact: devId };
-        else base.video.facingMode = { ideal: facing };
-        const stream = await navigator.mediaDevices.getUserMedia(base);
-        currentStream = stream; cam.srcObject = stream; await cam.play();
-        statusEl.textContent = "camera ready";
-      }catch(e){
-        statusEl.textContent = "camera error";
-        console.warn("getUserMedia failed", e);
+
+    function setSelected(node){
+      selectedNode = node || null;
+      if (selectedNode && !selectedNode.dataset.s){
+        selectedNode.dataset.s  = "1";
+        selectedNode.dataset.tx = "0";
+        selectedNode.dataset.ty = "0";
+        applyTransform(selectedNode);
       }
     }
-    async function scanCameras(){
-      if (!secure) return;
-      try { const tmp=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); tmp.getTracks().forEach(t=>t.stop()); } catch{}
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cams = devices.filter(d=>d.kind==="videoinput");
-      const labels = cams.map((d,i)=> d.label || `Camera ${i+1}`);
-      const ids = cams.map(d=>d.deviceId);
-      if (!labels.length){
-        ctrlCamera.options(["(none found)"]).setValue("(none found)");
-        ctrlCamera._idMap = {};
-        return;
+
+    // zoom the selected element; if none, zoom the active (non-BG) layer group
+    function zoomSelected(factor){
+      let target = selectedNode;
+      if (!target){
+        const g = activeLayerGroup();
+        if (g && g.getAttribute("data-type") !== "bg") target = g;
       }
-      const map = {}; labels.forEach((name,i)=> map[name]=ids[i]);
-      ctrlCamera._idMap = map;
-      const names = Object.keys(map);
-      ctrlCamera.options(names);
-      if (!names.includes(state.Camera)) ctrlCamera.setValue(names[0]);
-      await restartWebcam();
+      if (!target) return;
+
+      const s0 = parseFloat(target.dataset.s || "1");
+      let s1 = s0 * factor;
+      s1 = Math.max(0.1, Math.min(10, s1));    // clamp 10%..1000%
+      target.dataset.s = String(s1);
+      applyTransform(target);
     }
-    btnScan.onclick = () => scanCameras();
-    btnSwapFacing.onclick = async () => { facing = (facing==="user"?"environment":"user"); ctrlCamera.setValue("(click Scan)"); await restartWebcam(); };
 
-    // Upload image
-    fileImage.addEventListener("change", async (e)=>{
-      const f = e.target.files?.[0]; if (!f) return;
-      const url = URL.createObjectURL(f);
-      imgUpload.onload = ()=> URL.revokeObjectURL(url);
-      imgUpload.src = url;
-      setMode(MODE.IMAGE);
-    });
 
-    // Video file
-    fileVideo.addEventListener("change", async (e)=>{
-      const f = e.target.files?.[0]; if (!f) return;
-      const url = URL.createObjectURL(f);
-      vidFile.onloadeddata = ()=> { /* ready */ };
-      vidFile.src = url;
-      setMode(MODE.VIDEO);
-    });
-
-    // DRAW (SVG) — simple freehand lines
-    let drawing=false, lastPt=null, strokeW=3;
-    const strokes=[]; // for undo
-    drawThin.onclick = ()=> strokeW=3;
-    drawThick.onclick = ()=> strokeW=8;
-    drawClear.onclick = ()=> { while (drawSvg.firstChild) drawSvg.removeChild(drawSvg.firstChild); strokes.length=0; };
-    drawUndo.onclick = ()=> { const n=drawSvg.childNodes.length; if (n>0){ drawSvg.removeChild(drawSvg.lastChild); strokes.pop(); } };
-
-    function svgPoint(evt){
-      const rect = drawSvg.getBoundingClientRect();
-      const x = (evt.clientX - rect.left) * (drawSvg.viewBox.baseVal.width  || rect.width)  / rect.width;
-      const y = (evt.clientY - rect.top)  * (drawSvg.viewBox.baseVal.height || rect.height) / rect.height;
-      return {x,y};
+// --- zoom the active (non-BG) layer group ---
+    function applyLayerTransform(g){
+      const s  = parseFloat(g.dataset.s  || "1");
+      const tx = parseFloat(g.dataset.tx || "0");
+      const ty = parseFloat(g.dataset.ty || "0");
+      g.setAttribute("transform", `translate(${tx} ${ty}) scale(${s})`);
     }
-    function ensureViewBox(){
-      if (!drawSvg.getAttribute("viewBox")){
-        const r = drawSvg.getBoundingClientRect();
-        drawSvg.setAttribute("viewBox", `0 0 ${Math.max(1,r.width)} ${Math.max(1,r.height)}`);
+
+    function zoomActiveLayer(factor){
+      const g = activeLayerGroup();
+      if (!g || g.getAttribute("data-type") === "bg") return;
+
+  // center to zoom around = last pointer (if available), else center of viewBox
+      let c = lastPointer;
+      if (!c){
+        const vb = drawSvg.viewBox.baseVal;
+        c = { x: vb.x + vb.width/2, y: vb.y + vb.height/2 };
+      }
+
+      const { s, tx, ty } = getLayerXform(g);
+  const s1 = Math.max(0.1, Math.min(10, s * factor)); // clamp
+
+  // keep point c fixed: c = s*l + t  and  c = s1*l + t1  ⇒  t1 = (1 - k)*c + k*t  where k = s1/s = factor
+  const k = s1 / s;
+  const tx1 = (1 - k) * c.x + k * tx;
+  const ty1 = (1 - k) * c.y + k * ty;
+
+  setLayerXform(g, s1, tx1, ty1);
+}
+
+
+function setMode(m){
+  mode = m;
+  Object.values(sections).forEach(el => el.classList.remove("show"));
+  if (m===MODE.WEBCAM) { sections.webcam.classList.add("show"); srcTitle.textContent = "Source — Webcam"; }
+  else if (m===MODE.IMAGE){ sections.image.classList.add("show");  srcTitle.textContent = "Source — Uploaded Image"; }
+  else if (m===MODE.VIDEO){ sections.video.classList.add("show");  srcTitle.textContent = "Source — Video File"; }
+  else { sections.draw.classList.add("show");  srcTitle.textContent = "Source — Draw (SVG)"; ensureViewBox(true); }
+  chips.forEach(c=> c.classList.toggle("active", c.dataset.mode===m));
+}
+chips.forEach(c => c.addEventListener("click", ()=> setMode(c.dataset.mode)));
+
+      // --- webcam
+function selectedDeviceId(){ const map = ctrlCamera?._idMap || null; return map ? (map[state.Camera] || null) : null; }
+function parseRes(){ const [w,h] = state.Resolution.split("x").map(Number); return { width:{ ideal:w }, height:{ ideal:h } }; }
+function stopWebcam(){ if (currentStream){ currentStream.getTracks().forEach(t=>t.stop()); currentStream=null; } }
+async function restartWebcam(){
+  if (mode!==MODE.WEBCAM) return; stopWebcam();
+  try{
+    const devId = selectedDeviceId();
+    const base = { audio:false, video:{ ...parseRes() } };
+    if (devId) base.video.deviceId = { exact: devId }; else base.video.facingMode = { ideal: facing };
+    const stream = await navigator.mediaDevices.getUserMedia(base);
+    currentStream = stream; cam.srcObject = stream; await cam.play(); statusEl.textContent = "camera ready";
+  }catch(e){ statusEl.textContent = "camera error"; }
+}
+btnScan.onclick = async () => {
+  try { const tmp=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); tmp.getTracks().forEach(t=>t.stop()); } catch{}
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cams = devices.filter(d=>d.kind==="videoinput");
+  const labels = cams.map((d,i)=> d.label || `Camera ${i+1}`); const ids = cams.map(d=>d.deviceId);
+  if (!labels.length){ ctrlCamera.options(["(none found)"]).setValue("(none found)"); ctrlCamera._idMap = {}; return; }
+  const map = {}; labels.forEach((name,i)=> map[name]=ids[i]); ctrlCamera._idMap = map;
+  const names = Object.keys(map); ctrlCamera.options(names); if (!names.includes(state.Camera)) ctrlCamera.setValue(names[0]);
+  await restartWebcam();
+};
+btnSwapFacing.onclick = async () => { facing = (facing==="user"?"environment":"user"); ctrlCamera.setValue("(click Scan)"); await restartWebcam(); };
+
+      // --- uploads
+fileImage.addEventListener("change", async (e)=>{
+  const f = e.target.files?.[0]; if (!f) return;
+  const url = URL.createObjectURL(f);
+  imgUpload.onload = ()=> URL.revokeObjectURL(url);
+  imgUpload.src = url; setMode(MODE.IMAGE);
+});
+fileVideo.addEventListener("change", async (e)=>{
+  const f = e.target.files?.[0]; if (!f) return;
+  const url = URL.createObjectURL(f);
+  vidFile.onloadeddata = ()=> {};
+  vidFile.src = url; setMode(MODE.VIDEO);
+});
+
+
+
+
+const eraseSize = document.getElementById("eraseSize");
+const eraseSizeVal = document.getElementById("eraseSizeVal");
+let eraserRadius = parseInt(eraseSize.value,10) / 2;
+eraseSize.addEventListener("input", ()=>{
+  eraseSizeVal.textContent = eraseSize.value;
+  eraserRadius = parseInt(eraseSize.value,10) / 2;
+});
+
+
+
+  // ===== DRAW (SVG) + LAYERS =====
+const TOOL = { FREE:"free", LINE:"line", RECT:"rect", CIRC:"circ", ERASE:"erase", GRAB:"grab" };
+
+
+let tool = TOOL.FREE;
+  let lastDrawTool = TOOL.FREE;   // remember last non-eraser tool
+
+  let drawing=false, startPt=null, strokeW=3, activeDrawEl=null;
+
+
+  let strokeColor="#ffffff", fillColor="#000000", fillOpacity=0.0;
+  let bgColor = "#0d0d10";
+
+
+
+
+    const history=[];   // created elements (for undo)
+    const redoStack=[]; // redo stack
+
+    // Layers: each is a <g> under #layersRoot. layers[0] = Background (image + color).
+    let layersRoot = null;
+    const layers = [];           // { id, g, name }
+    let activeLayer = 1;         // default to first drawing layer after BG
+
+    // Tools UI
+    const setTool = (t)=>{
+  // remember the last *drawing* tool so E can toggle back
+      if (t !== TOOL.ERASE) lastDrawTool = t;
+
+      tool = t;
+      Object.values(toolBtns).forEach(b=> b.classList.remove("active"));
+      const map = {
+        [TOOL.FREE]: toolBtns.free,
+        [TOOL.LINE]: toolBtns.line,
+        [TOOL.RECT]: toolBtns.rect,
+        [TOOL.CIRC]: toolBtns.circ,
+        [TOOL.ERASE]: toolBtns.erase,
+      };
+      map[t]?.classList.add("active");
+    };
+
+    function toggleEraser(){
+      if (tool === TOOL.ERASE){
+        setTool(lastDrawTool || TOOL.FREE);
+      } else {
+        setTool(TOOL.ERASE);
       }
     }
-    function startDraw(e){
-      ensureViewBox();
-      drawing=true;
-      const p = svgPoint(e);
-      lastPt=p;
-      const pl = document.createElementNS("http://www.w3.org/2000/svg","polyline");
-      pl.setAttribute("fill","none");
-      pl.setAttribute("stroke","#ffffff");
-      pl.setAttribute("stroke-linecap","round");
-      pl.setAttribute("stroke-linejoin","round");
-      pl.setAttribute("stroke-width", String(strokeW));
-      pl.setAttribute("points", `${p.x},${p.y}`);
-      drawSvg.appendChild(pl);
-      strokes.push(pl);
-    }
-    function moveDraw(e){
-      if (!drawing) return;
-      const p = svgPoint(e);
-      const pl = strokes[strokes.length-1];
-      pl.setAttribute("points", pl.getAttribute("points")+" "+`${p.x},${p.y}`);
-      lastPt=p;
-    }
-    function endDraw(){ drawing=false; lastPt=null; }
 
-    drawSvg.addEventListener("pointerdown", e=>{ drawSvg.setPointerCapture(e.pointerId); startDraw(e); });
-    drawSvg.addEventListener("pointermove", e=> moveDraw(e));
-    drawSvg.addEventListener("pointerup",   ()=> endDraw());
-    drawSvg.addEventListener("pointercancel",()=> endDraw());
-    drawSvg.addEventListener("touchstart", e=> e.preventDefault(), {passive:false});
-    drawSvg.addEventListener("gesturestart", e=> e.preventDefault());
 
-    // Frame capture from current mode
-    function sizeHidden(w,h){ hidden.width=w; hidden.height=h; }
 
-    async function svgToCanvasBlob(quality=0.9){
+    toolBtns.free.onclick  = ()=> setTool(TOOL.FREE);
+    toolBtns.line.onclick  = ()=> setTool(TOOL.LINE);
+    toolBtns.rect.onclick  = ()=> setTool(TOOL.RECT);
+    toolBtns.circ.onclick  = ()=> setTool(TOOL.CIRC);
+    toolBtns.erase.onclick = ()=> setTool(TOOL.ERASE);
+    setTool(TOOL.FREE);
+
+
+    const clamp = (v,min,max)=> Math.max(min, Math.min(max, v));
+    const setStrokeW = (w)=>{ strokeW = clamp(w, 1, 64); thicknessReadout.textContent = `${strokeW}px`; };
+    setStrokeW(strokeW);
+
+    // colors / fill / background
+    const updateFillAlphaLabel = ()=> fillAlphaVal.textContent = Number(fillOpacity).toFixed(2);
+    colorPick.addEventListener("input", ()=> { strokeColor = colorPick.value; });
+    fillPick.addEventListener("input",  ()=> { fillColor   = fillPick.value; });
+    fillAlpha.addEventListener("input", ()=> { fillOpacity = parseFloat(fillAlpha.value); updateFillAlphaLabel(); });
+    updateFillAlphaLabel();
+    bgPick.addEventListener("input", ()=>{ bgColor = bgPick.value; updateBgRect(); });
+
+    // ----- Layers helpers -----
+    function ensureViewBox(force=false){
       const r = drawSvg.getBoundingClientRect();
-      const w = Math.round(r.width), h = Math.round(r.height);
-      ensureViewBox();
-      const svgStr = new XMLSerializer().serializeToString(drawSvg);
-      const blob = new Blob([svgStr], {type:"image/svg+xml"});
-      const url = URL.createObjectURL(blob);
-      const img = new Image();
-      img.decoding = "async";
-      img.src = url;
-      await img.decode().catch(()=>{});
-      sizeHidden(w,h);
-      ctx.clearRect(0,0,w,h);
-      ctx.drawImage(img,0,0,w,h);
-      URL.revokeObjectURL(url);
-      return new Promise(res => hidden.toBlob(res, "image/jpeg", quality));
-    }
-
-    async function grabFrameBlob(quality=0.85){
-      if (mode===MODE.WEBCAM){
-        if (!cam.videoWidth || !cam.videoHeight) return null;
-        const w=cam.videoWidth, h=cam.videoHeight;
-        sizeHidden(w,h);
-        ctx.save();
-        ctx.translate(state.Flip_X ? w : 0, state.Flip_Y ? h : 0);
-        ctx.scale(state.Flip_X ? -1 : 1, state.Flip_Y ? -1 : 1);
-        ctx.drawImage(cam,0,0,w,h);
-        ctx.restore();
-        return new Promise(r=> hidden.toBlob(r,"image/jpeg",quality));
-      } else if (mode===MODE.IMAGE){
-        if (!imgUpload.naturalWidth) return null;
-        const w=imgUpload.naturalWidth, h=imgUpload.naturalHeight;
-        sizeHidden(w,h);
-        ctx.drawImage(imgUpload,0,0,w,h);
-        return new Promise(r=> hidden.toBlob(r,"image/jpeg",quality));
-      } else if (mode===MODE.VIDEO){
-        if (!vidFile.videoWidth || !vidFile.videoHeight) return null;
-        const w=vidFile.videoWidth, h=vidFile.videoHeight;
-        sizeHidden(w,h);
-        ctx.drawImage(vidFile,0,0,w,h);
-        return new Promise(r=> hidden.toBlob(r,"image/jpeg",quality));
-      } else {
-        return await svgToCanvasBlob(quality);
+      if (!force && (r.width < 10 || r.height < 10)) { requestAnimationFrame(()=>ensureViewBox(true)); return; }
+      if (!drawSvg.getAttribute("viewBox") || force){
+        drawSvg.setAttribute("viewBox", `0 0 ${Math.max(10, Math.round(r.width))} ${Math.max(10, Math.round(r.height))}`);
       }
+      ensureLayersRoot();
     }
 
-    // Inference
-    async function processOne(){
-      if (inFlight) return;
-      const frameBlob = await grabFrameBlob(0.85);
-      if (!frameBlob) { statusEl.textContent="no frame yet"; return; }
+    function addGalleryThumb(dataUrl){
+      const wrap = document.createElement("div");
+      wrap.style.width = "92px";
+      wrap.style.height = "92px";
+      wrap.style.border = "1px solid var(--border)";
+      wrap.style.borderRadius = "8px";
+      wrap.style.overflow = "hidden";
+      wrap.style.cursor = "pointer";
+      wrap.style.background = "#000";
 
-      inFlight = true;
-      const t0 = performance.now();
-      try{
-        statusEl.textContent = "processing…";
-        const fd = new FormData();
-        fd.append("frame", frameBlob, "frame.jpg");
-        fd.append("prompt", state.Prompt || "");
-        fd.append("strength", String(state.Strength));
-        fd.append("guidance", String(state.Guidance));
-        fd.append("steps", String(state.Steps));
+      const im = document.createElement("img");
+      im.src = dataUrl;
+      im.alt = "output";
+      im.style.width = "100%";
+      im.style.height = "100%";
+      im.style.objectFit = "cover";
 
-        const res = await fetch("/process", { method:"POST", body:fd });
-        if (!res.ok){
-          let msg = `HTTP ${res.status}`;
-          try{ const j=await res.json(); if (j?.error) msg=j.error; }catch{}
-          throw new Error(msg);
+      wrap.appendChild(im);
+      wrap.title = "Click to load into selected layer";
+      wrap.addEventListener("click", ()=>{
+    // load into selected layer as an <image> covering the canvas
+        ensureLayersRoot();
+        const { w, h } = vbSize();
+        const g = activeLayerGroup();
+        const img = document.createElementNS("http://www.w3.org/2000/svg","image");
+        img.setAttribute("x", 0); img.setAttribute("y", 0);
+        img.setAttribute("width", w); img.setAttribute("height", h);
+        img.setAttribute("preserveAspectRatio","xMidYMid meet");
+        img.setAttribute("href", dataUrl);
+        img.setAttributeNS("http://www.w3.org/1999/xlink", "href", dataUrl);
+        g.appendChild(img);
+        pushHistory(img);
+        setSelected(img); 
+      });
+
+  // newest first
+      gallery.insertBefore(wrap, gallery.firstChild);
+    }
+
+
+
+    function vbSize(){
+      const vb = drawSvg.viewBox.baseVal;
+      return { w: vb && vb.width ? vb.width : 10, h: vb && vb.height ? vb.height : 10 };
+    }
+
+    function ensureLayersRoot(){
+      if (!layersRoot){
+        layersRoot = document.createElementNS("http://www.w3.org/2000/svg","g");
+        layersRoot.setAttribute("id","layersRoot");
+        drawSvg.appendChild(layersRoot);
+
+        // Create Background layer (index 0)
+        const bg = createLayer("Background", /*isBG*/true);
+        // Add one drawing layer by default (index 1)
+        createLayer("Layer 1");
+        setActiveLayer(1);
+      }
+      updateBgRect();
+    }
+
+    function createLayer(name, isBG=false, insertAboveId=null){
+      const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+      g.setAttribute("data-name", name);
+      g.setAttribute("data-type", isBG ? "bg" : "draw");
+
+  // Find insertion point in SVG (after the target, so it visually sits above it)
+      if (!layersRoot) ensureLayersRoot();
+
+      if (isBG){
+        const { w, h } = vbSize();
+        const rect = document.createElementNS("http://www.w3.org/2000/svg","rect");
+        rect.setAttribute("x", 0); rect.setAttribute("y", 0);
+        rect.setAttribute("width", w); rect.setAttribute("height", h);
+        rect.setAttribute("fill", bgColor);
+        rect.setAttribute("id", "bgRect");
+        g.appendChild(rect);
+        const img = document.createElementNS("http://www.w3.org/2000/svg","image");
+        img.setAttribute("id", "bgImage");
+        img.setAttribute("x", 0); img.setAttribute("y", 0);
+        img.setAttribute("width", w); img.setAttribute("height", h);
+        img.setAttribute("preserveAspectRatio","xMidYMid meet");
+        g.appendChild(img);
+      }
+
+  // Insert in DOM:
+      let refNode = null;
+      if (insertAboveId != null && layers[insertAboveId]?.g) {
+    refNode = layers[insertAboveId].g.nextSibling; // insertAfter = above visually
+  }
+  layersRoot.insertBefore(g, refNode); // if refNode null, append at end
+
+  const id = layers.length;
+  layers.push({ id, g, name });
+
+  // Insert list item so it appears above the selected one (list shows topmost first)
+  const beforeEl = (insertAboveId != null)
+  ? layersList.querySelector(`.layer-item[data-id="${insertAboveId}"]`)
+  : null;
+  addLayerListItem(id, name, isBG, beforeEl);
+
+  return { id, g };
+}
+
+
+
+function addLayerListItem(id, name, isBG, beforeEl=null){
+  const item = document.createElement("div");
+  item.className = "layer-item" + (isBG ? " bg" : "");
+  item.dataset.id = String(id);
+  item.title = name;
+
+  // eye
+  const eye = document.createElement("button");
+  eye.type = "button";
+  eye.className = "layer-eye btn-sm";
+  eye.style.padding = "2px 6px";
+  eye.style.minWidth = "28px";
+  eye.title = "Hide/Show (H)";
+  eye.textContent = layers[id]?.hidden ? "🙈" : "👁️";
+  eye.addEventListener("click", (ev)=>{
+    ev.stopPropagation();
+    toggleLayerVisibility(id);
+  });
+
+  const box = document.createElement("div"); 
+  box.className = "box";
+
+  const label = document.createElement("div"); 
+  label.textContent = name; 
+  label.style.fontSize = "12px"; 
+  label.style.opacity = ".95";
+  label.className = "layer-label";
+
+  item.appendChild(eye);
+  item.appendChild(box);
+  item.appendChild(label);
+
+  if (isBG) item.style.opacity = ".9";
+
+  // select on single click
+  item.addEventListener("click", ()=> setActiveLayer(id));
+
+  // rename on double click
+  label.addEventListener("dblclick", (ev)=>{
+    ev.stopPropagation();
+    startLayerRename(item, label);
+  });
+
+  if (beforeEl) {
+    layersList.insertBefore(item, beforeEl);
+  } else {
+    layersList.insertBefore(item, layersList.firstChild);
+  }
+  refreshLayerSelection();
+}
+
+
+
+
+
+
+function startLayerRename(itemEl, labelEl){
+  const id = Number(itemEl.dataset.id);
+  const current = labelEl.textContent || "";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = current;
+  input.className = "layer-rename";
+  input.style.width = "100%";
+  input.style.fontSize = "12px";
+  input.style.padding = "2px 4px";
+  input.style.borderRadius = "6px";
+  input.style.border = "1px solid #3a3a3f";
+  input.style.background = "#0f0f13";
+  input.style.color = "#fff";
+
+  // swap label → input (only if label is still there)
+  if (labelEl.parentNode === itemEl) {
+    itemEl.replaceChild(input, labelEl);
+  } else {
+    return; // something changed; bail out safely
+  }
+
+  input.focus();
+  input.select();
+
+  let finished = false; // guard to avoid double commit/cancel
+
+  const cleanup = ()=>{
+    input.removeEventListener("keydown", onKey);
+    input.removeEventListener("blur", onBlur);
+  };
+
+  const commit = ()=>{
+    if (finished) return;
+    finished = true;
+
+    const newName = (input.value || "").trim() || current;
+    applyLayerRename(id, newName);
+    labelEl.textContent = newName;
+
+    // Only replace if input is still mounted under itemEl
+    if (input.parentNode === itemEl) {
+      itemEl.replaceChild(labelEl, input);
+    }
+    cleanup();
+  };
+
+  const cancel = ()=>{
+    if (finished) return;
+    finished = true;
+
+    // Restore label if input is still present
+    if (input.parentNode === itemEl) {
+      itemEl.replaceChild(labelEl, input);
+    }
+    cleanup();
+  };
+
+  function onKey(e){
+    if (e.key === "Enter") { e.preventDefault(); commit(); }
+    else if (e.key === "Escape") { e.preventDefault(); cancel(); }
+  }
+  function onBlur(){
+    // Blur may fire after Enter—guard handles double calls.
+    commit();
+  }
+
+  input.addEventListener("keydown", onKey);
+  input.addEventListener("blur", onBlur);
+}
+
+
+function applyLayerRename(id, newName){
+  const rec = layers[id];
+  if (!rec || !rec.g) return;
+  rec.name = newName;
+  rec.g.setAttribute("data-name", newName);
+
+  // update tooltip/title in the list
+  const item = layersList.querySelector(`.layer-item[data-id="${id}"]`);
+  if (item) item.title = newName;
+}
+
+
+
+// Add layer above selected
+// Add layer above selected
+layerAddBtn.onclick = ()=>{
+  const n = layers.filter(l=>l && l.g && l.g.getAttribute("data-type")!=="bg").length + 1;
+  const insertAboveId = activeLayer;
+  const { id } = createLayer(`Layer ${n}`, false, insertAboveId);
+  setActiveLayer(id);
+  recordLayerAdd(id); // <-- record for undo
+};
+
+// Delete selected layer (with undo)
+layerDelBtn.onclick = ()=>{
+  if (activeLayer === 0) return; // keep BG
+  removeLayer(activeLayer, /*recordHistory*/true);
+};
+
+
+
+function refreshLayerSelection(){
+  const items = layersList.querySelectorAll(".layer-item");
+  items.forEach(el=>{
+    const id = Number(el.dataset.id);
+    el.classList.toggle("active", id === activeLayer);
+  });
+}
+
+function setActiveLayer(id){
+  if (id < 0 || id >= layers.length) return;
+  activeLayer = id;
+  refreshLayerSelection();
+}
+
+function activeLayerGroup(){
+  ensureLayersRoot();
+  return layers[activeLayer]?.g || layers[0].g;
+}
+
+
+// ---- GRAB (drag active layer) ----
+let grabbing = false;
+let grabStart = null;   // pointer start (viewBox coords)
+let grabInit  = null;   // { s, tx, ty } at start
+let lastNonGrabTool = TOOL.FREE; // remember for toggling back
+
+function toggleGrab(){
+  if (tool === TOOL.GRAB){
+    setTool(lastNonGrabTool || TOOL.FREE);
+    drawSvg.classList.remove('grab','grabbing');
+    statusEl.textContent = "grab off";
+  } else {
+    if (tool !== TOOL.ERASE) lastNonGrabTool = tool; // don't store eraser as last drawing tool
+    setTool(TOOL.GRAB);
+    drawSvg.classList.add('grab');
+    statusEl.textContent = "grab on (drag to move layer; Shift = axis lock)";
+  }
+}
+
+// record a move for undo/redo
+function recordLayerMove(id, fromTx, fromTy, toTx, toTy){
+  if (fromTx === toTx && fromTy === toTy) return; // no-op
+  history.push({ op:"layer-move", id, from:{tx:fromTx, ty:fromTy}, to:{tx:toTx, ty:toTy} });
+  redoStack.length = 0;
+}
+
+
+
+// --- layer transform as a matrix: x' = s*x + tx, y' = s*y + ty
+function getLayerXform(g){
+  const s  = parseFloat(g.dataset.s  || "1");
+  const tx = parseFloat(g.dataset.tx || "0");
+  const ty = parseFloat(g.dataset.ty || "0");
+  return { s, tx, ty };
+}
+function setLayerXform(g, s, tx, ty){
+  g.dataset.s  = String(s);
+  g.dataset.tx = String(tx);
+  g.dataset.ty = String(ty);
+  // matrix(a b c d e f) == [[a c e],[b d f],[0 0 1]]
+  g.setAttribute("transform", `matrix(${s} 0 0 ${s} ${tx} ${ty})`);
+}
+
+// global(svg/viewBox) → local(layer) using inverse of matrix(s,0,0,s,tx,ty)
+function toLocalPoint(g, p){
+  const { s, tx, ty } = getLayerXform(g);
+  return { x: (p.x - tx) / s, y: (p.y - ty) / s };
+}
+
+// track last pointer position in SVG coords (viewBox space)
+let lastPointer = null;
+drawSvg.addEventListener("pointermove", e => { lastPointer = svgPoint(e); }, {passive:true});
+
+
+drawSvg.addEventListener("pointerdown", (e)=>{
+  if (tool !== TOOL.GRAB) return;
+  const g = activeLayerGroup();
+  if (!g || g.getAttribute("data-type")==="bg") return; // don't move BG
+  drawSvg.setPointerCapture(e.pointerId);
+  ensureViewBox();
+  grabStart = svgPoint(e);            // viewBox space
+  grabInit  = getLayerXform(g);       // { s, tx, ty }
+  grabbing  = true;
+  drawSvg.classList.remove('grab');
+  drawSvg.classList.add('grabbing');
+});
+
+drawSvg.addEventListener("pointermove", (e)=>{
+  if (tool !== TOOL.GRAB || !grabbing || !grabInit) return;
+  const g = activeLayerGroup();
+  if (!g) return;
+  const p = svgPoint(e);
+  let dx = p.x - grabStart.x;
+  let dy = p.y - grabStart.y;
+
+  // Shift = constrain to dominant axis
+  if (e.shiftKey){
+    if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0;
+  }
+
+  const { s, tx, ty } = grabInit;
+  setLayerXform(g, s, tx + dx, ty + dy);
+});
+
+function endGrab(e){
+  if (tool !== TOOL.GRAB || !grabbing || !grabInit) return;
+  const g = activeLayerGroup(); if (!g) return;
+  const end = getLayerXform(g);
+  recordLayerMove(activeLayer, grabInit.tx, grabInit.ty, end.tx, end.ty);
+  grabbing = false; grabStart = null; grabInit = null;
+  drawSvg.classList.remove('grabbing');
+  drawSvg.classList.add('grab');
+}
+
+drawSvg.addEventListener("pointerup", endGrab);
+drawSvg.addEventListener("pointercancel", endGrab);
+
+
+
+function updateBgRect(){
+  const bg = layers[0]?.g; if (!bg) return;
+  const { w, h } = vbSize();
+  const rect = bg.querySelector("#bgRect");
+  rect.setAttribute("width", w); rect.setAttribute("height", h);
+  rect.setAttribute("fill", bgColor);
+  const img = bg.querySelector("#bgImage");
+  img.setAttribute("width", w); img.setAttribute("height", h);
+}
+
+    // Layer UI actions
+
+
+layerDelBtn.onclick = ()=>{
+      if (activeLayer === 0) return; // don't delete BG
+      const layer = layers[activeLayer]; if (!layer) return;
+      // remove DOM
+      layer.g.remove();
+      // remove list item
+      const li = layersList.querySelector(`.layer-item[data-id="${activeLayer}"]`);
+      li?.remove();
+      // keep slot null to preserve ids; pick next visible layer
+      layers[activeLayer] = null;
+      // choose nearest higher id, else lower, else 0
+      let nid = activeLayer - 1;
+      for (let i = activeLayer + 1; i < layers.length; i++){ if (layers[i]){ nid = i; break; } }
+        while (nid > 0 && !layers[nid]) nid--;
+      setActiveLayer(nid >= 0 ? nid : 0);
+    };
+
+    function blobToDataURL(blob){
+      return new Promise((res, rej)=>{
+        const r = new FileReader();
+        r.onload = ()=> res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(blob);
+      });
+    }
+
+
+    function fileToDataURL(file){
+      return new Promise((res, rej)=>{
+        const r = new FileReader();
+        r.onload = ()=> res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+    }
+
+
+    // Load image to BG
+    fileBg.addEventListener("change", async (e)=>{
+      const f = e.target.files?.[0]; if (!f) return;
+      const dataUrl = await fileToDataURL(f);
+      ensureLayersRoot();
+      const bg = layers[0].g;
+      const img = bg.querySelector("#bgImage");
+      img.removeAttribute("crossorigin");
+      img.setAttribute("href", dataUrl);
+      img.setAttributeNS("http://www.w3.org/1999/xlink", "href", dataUrl);
+    });
+
+
+    // Load image to current layer (as <image> covering canvas)
+    fileLayer.addEventListener("change", async (e)=>{
+      const f = e.target.files?.[0]; if (!f) return;
+      const dataUrl = await fileToDataURL(f);
+      ensureLayersRoot();
+      const { w, h } = vbSize();
+      const g = activeLayerGroup();
+      const img = document.createElementNS("http://www.w3.org/2000/svg","image");
+      img.setAttribute("x", 0); img.setAttribute("y", 0);
+      img.setAttribute("width", w); img.setAttribute("height", h);
+      img.setAttribute("preserveAspectRatio","xMidYMid meet");
+      img.removeAttribute("crossorigin");
+      img.setAttribute("href", dataUrl);
+      img.setAttributeNS("http://www.w3.org/1999/xlink","href", dataUrl);
+      g.appendChild(img);
+      pushHistory(img);
+      setSelected(img); 
+    });
+
+
+    window.addEventListener("resize", ()=> { if (mode===MODE.DRAW) ensureViewBox(true); });
+
+// history helpers (supports add/remove)
+
+    function pushHistory(node, op='add'){
+      const parent = node.parentNode;
+      const next   = node.nextSibling;
+      history.push({ op, node, parent, next });
+      redoStack.length = 0;
+    }
+
+    function undo(){
+      const h = history.pop(); if (!h) return;
+
+      if (h.op === 'add'){
+    // undo element creation → remove it
+        if (h.node?.parentNode) h.node.parentNode.removeChild(h.node);
+        redoStack.push(h);
+
+      } else if (h.op === 'remove'){
+    // undo element removal → restore it at the same position
+        if (h.parent){
+          if (h.next && h.next.parentNode === h.parent) h.parent.insertBefore(h.node, h.next);
+          else h.parent.appendChild(h.node);
         }
-        const outBlob = await res.blob();
-        if (out.dataset.url) URL.revokeObjectURL(out.dataset.url);
-        const url = URL.createObjectURL(outBlob);
-        out.dataset.url = url;
-        out.src = url;
-        statusEl.textContent = "done";
-      }catch(e){
-        console.warn("/process error", e);
-        statusEl.textContent = "error";
-      }finally{
-        const dt = performance.now() - t0;
-        avgLatencyMs = 0.8*avgLatencyMs + 0.2*dt;
-        if (state.Live && liveTimer){
-          clearInterval(liveTimer);
-          liveTimer = setInterval(processOne, Math.max(200, Math.round(avgLatencyMs)));
+        redoStack.push(h);
+
+      } else if (h.op === 'layer-add'){
+    // undo new layer → delete it (without re-recording)
+    removeLayer(h.id, /*recordHistory*/false);
+        redoStack.push(h);
+
+      } else if (h.op === 'layer-del'){
+    // undo layer deletion → restore it (SVG group + list item + visibility)
+        restoreDeletedLayer(h);
+        redoStack.push(h);
+
+      } else if (h.op === 'layer-rename'){
+    // undo rename: apply old name
+    // expects: { id, from: "old name", to: "new name" }
+        applyLayerRename(h.id, h.from);
+    // also update list label if present
+        const item = layersList.querySelector(`.layer-item[data-id="${h.id}"] .layer-label`);
+        if (item) item.textContent = h.from;
+        redoStack.push(h);
+
+      } else if (h.op === 'layer-visibility'){
+    // undo visibility: revert to previous hidden state
+    // expects: { id, fromHidden: bool, toHidden: bool }
+        setLayerVisibility(h.id, !!h.fromHidden);
+        redoStack.push(h);
+      }
+    }
+
+    function redo(){
+      const h = redoStack.pop(); if (!h) return;
+
+      if (h.op === 'add'){
+    // redo element creation → reinsert element
+        if (h.parent){
+          if (h.next && h.next.parentNode === h.parent) h.parent.insertBefore(h.node, h.next);
+          else h.parent.appendChild(h.node);
         }
-        inFlight = false;
+        history.push(h);
+
+      } else if (h.op === 'remove'){
+    // redo element removal → remove again
+        if (h.node?.parentNode) h.node.parentNode.removeChild(h.node);
+        history.push(h);
+
+      } else if (h.op === 'layer-add'){
+    // redo add → ensure SVG group + list item are present again
+        if (!layers[h.id]?.g?.parentNode){
+          const { parent, nextSibling, rec, item, listParent, listNext } = h;
+      // SVG group
+          if (nextSibling && nextSibling.parentNode === parent) parent.insertBefore(rec.g, nextSibling);
+          else parent.appendChild(rec.g);
+      // List item
+          if (item){
+            if (listNext && listNext.parentNode === listParent) listParent.insertBefore(item, listNext);
+            else listParent.appendChild(item);
+          } else {
+            addLayerListItem(h.id, rec.name || `Layer ${h.id}`, rec.g.getAttribute("data-type")==="bg");
+          }
+          setLayerVisibility(h.id, !!rec.hidden);
+        }
+        history.push(h);
+
+      } else if (h.op === 'layer-del'){
+    // redo delete → remove again (without re-recording)
+    removeLayer(h.id, /*recordHistory*/false);
+        history.push(h);
+
+      } else if (h.op === 'layer-rename'){
+    // redo rename: apply new name
+    // expects: { id, from: "old", to: "new" }
+        applyLayerRename(h.id, h.to);
+        const item = layersList.querySelector(`.layer-item[data-id="${h.id}"] .layer-label`);
+        if (item) item.textContent = h.to;
+        history.push(h);
+
+      } else if (h.op === 'layer-visibility'){
+    // redo visibility: apply new hidden state
+    // expects: { id, fromHidden: bool, toHidden: bool }
+        setLayerVisibility(h.id, !!h.toHidden);
+        history.push(h);
       }
     }
 
-    function toggleLive(on){
-      state.Live = !!on;
-      if (on){
-        statusEl.textContent = "live…";
-        if (liveTimer) clearInterval(liveTimer);
-        liveTimer = setInterval(processOne, Math.max(200, Math.round(avgLatencyMs)));
-      } else {
-        statusEl.textContent = "idle";
-        if (liveTimer) clearInterval(liveTimer);
-        liveTimer = null;
-      }
+
+
+
+// ------- Layer list helpers -------
+    function getLayerListItem(id){
+      return layersList.querySelector(`.layer-item[data-id="${id}"]`);
     }
 
-    // Action buttons under panes
-    document.getElementById("btnStart").onclick = ()=> toggleLive(true);
-    document.getElementById("btnStop").onclick  = ()=> toggleLive(false);
-    document.getElementById("btnSnap").onclick  = ()=> processOne();
+    function layerItemIndex(el){
+      return Array.from(layersList.children).indexOf(el);
+    }
 
-    // Default mode
-    setMode(MODE.WEBCAM);
-  </script>
+// ------- Visibility -------
+    function updateEyeIcon(itemEl, hidden){
+      let eye = itemEl.querySelector(".layer-eye");
+      if (!eye) return;
+      eye.textContent = hidden ? "🙈" : "👁️";
+      itemEl.style.opacity = hidden ? 0.55 : itemEl.classList.contains("bg") ? 0.9 : 1.0;
+    }
+
+    function setLayerVisibility(id, hidden){
+      const rec = layers[id]; if (!rec || !rec.g) return;
+      rec.hidden = !!hidden;
+      rec.g.style.display = hidden ? "none" : "";
+      const item = getLayerListItem(id);
+      if (item) updateEyeIcon(item, hidden);
+    }
+
+    function toggleLayerVisibility(id){
+      const rec = layers[id]; if (!rec) return;
+      setLayerVisibility(id, !rec.hidden);
+    }
+
+// ------- Layer remove/restore with history -------
+    function removeLayer(id, recordHistory=true){
+  if (id === 0) return; // keep BG safe
+  const rec = layers[id]; if (!rec || !rec.g) return;
+
+  // capture DOM positions (SVG + list)
+  const parent = layersRoot;
+  const nextSibling = rec.g.nextSibling;
+
+  const item = getLayerListItem(id);
+  const listParent = layersList;
+  const listNext = item ? item.nextSibling : null;
+
+  // remove from DOM
+  rec.g.remove();
+  if (item) item.remove();
+
+  if (recordHistory){
+    history.push({
+      op: "layer-del",
+      id,
+      rec,                 // keep reference to the record (holds g)
+      parent, nextSibling,
+      item, listParent, listNext
+    });
+    redoStack.length = 0;
+  }
+
+  // keep slot but mark absent visually
+  // pick a new active layer
+  let nid = id - 1;
+  for (let i=id+1; i<layers.length; i++) if (layers[i] && layers[i].g) { nid = i; break; }
+    while (nid > 0 && (!layers[nid] || !layers[nid].g)) nid--;
+  setActiveLayer(nid >= 0 ? nid : 0);
+}
+
+function restoreDeletedLayer(h){
+  const { id, rec, parent, nextSibling, item, listParent, listNext } = h;
+
+  // reinsert SVG group
+  if (nextSibling && nextSibling.parentNode === parent) {
+    parent.insertBefore(rec.g, nextSibling);
+  } else {
+    parent.appendChild(rec.g);
+  }
+
+  // reinsert list item (re-create if needed)
+  if (item){
+    if (listNext && listNext.parentNode === listParent) {
+      listParent.insertBefore(item, listNext);
+    } else {
+      listParent.appendChild(item);
+    }
+  } else {
+    // if somehow item missing, rebuild a fresh one
+    addLayerListItem(id, rec.name || rec.g.getAttribute("data-name") || `Layer ${id}`, rec.g.getAttribute("data-type")==="bg");
+  }
+
+  setLayerVisibility(id, !!rec.hidden);
+}
+
+function recordLayerAdd(id){
+  const rec = layers[id]; if (!rec) return;
+  const parent = layersRoot;
+  const nextSibling = rec.g.nextSibling;
+
+  const item = getLayerListItem(id);
+  const listParent = layersList;
+  const listNext = item ? item.nextSibling : null;
+
+  history.push({
+    op: "layer-add",
+    id,
+    rec,
+    parent, nextSibling,
+    item, listParent, listNext
+  });
+  redoStack.length = 0;
+}
+
+
+
+
+
+drawUndo.onclick = ()=> undo();
+drawRedo.onclick = ()=> redo();
+
+
+    // Clear now clears ONLY the active layer (keeps BG + other layers)
+drawClear.onclick = ()=> {
+  const g = activeLayerGroup();
+  const isBG = g.getAttribute("data-type") === "bg";
+      // Don't remove bgRect/bgImage on BG clear; just remove other children
+  const keepIds = isBG ? new Set(["bgRect","bgImage"]) : new Set();
+  Array.from(g.childNodes).forEach(node=>{
+    if (node.nodeType===1 && (!node.id || !keepIds.has(node.id))){
+          // also purge from history/redo if same node
+      for (let i=history.length-1;i>=0;i--) if (history[i]===node) history.splice(i,1);
+        for (let i=redoStack.length-1;i>=0;i--) if (redoStack[i]===node) redoStack.splice(i,1);
+          g.removeChild(node);
+      }
+    });
+};
+
+
+// ===== Eraser (radius-based removal) =====
+let erasing = false;
+
+// safety: never erase BG rect/image
+const isProtected = (el)=> (el?.id === 'bgRect' || el?.id === 'bgImage');
+
+function eraseAtClientXY(clientX, clientY){
+  // Sample multiple points in a small disc to simulate radius
+  const samples = [];
+  const r = eraserRadius;
+  const steps = Math.max(8, Math.min(32, Math.round(r)));
+  for (let i=0;i<steps;i++){
+    const a = (i/steps) * Math.PI*2;
+    samples.push([clientX + r*Math.cos(a), clientY + r*Math.sin(a)]);
+  }
+  samples.push([clientX, clientY]);
+
+  // erase from the active (non-BG) layer only
+  const g = activeLayerGroup();
+  if (!g || g.getAttribute('data-type')==='bg') return;
+
+  for (const [sx, sy] of samples){
+    const el = document.elementFromPoint(sx, sy);
+    if (!el || el === drawSvg) continue;
+
+    // ensure the target is inside the active layer and not protected
+    const inLayer = el.closest('g') === g;
+    if (!inLayer || isProtected(el)) continue;
+
+    // Remove the element and record history (remove op)
+    const parent = el.parentNode;
+    const next   = el.nextSibling;
+    if (parent){
+      parent.removeChild(el);
+      history.push({ op:'remove', node: el, parent, next });
+      redoStack.length = 0;
+      // stop at first valid removal per sample; continue other samples
+    }
+  }
+}
+
+drawSvg.addEventListener('pointerdown', (e)=>{
+  if (tool !== TOOL.ERASE) return;
+  erasing = true;
+  drawSvg.setPointerCapture(e.pointerId);
+  eraseAtClientXY(e.clientX, e.clientY);
+});
+drawSvg.addEventListener('pointermove', (e)=>{
+  if (tool !== TOOL.ERASE || !erasing) return;
+  eraseAtClientXY(e.clientX, e.clientY);
+});
+drawSvg.addEventListener('pointerup', ()=>{
+  if (tool !== TOOL.ERASE) return;
+  erasing = false;
+});
+drawSvg.addEventListener('pointercancel', ()=>{
+  if (tool !== TOOL.ERASE) return;
+  erasing = false;
+});
+
+
+
+// keys: [ / ] thickness, + / - zoom active layer (Shift = faster), S save, Cmd/Ctrl+Z/Y undo/redo
+window.addEventListener("keydown", async (e)=>{
+  const t = e.target;
+  const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+  if (typing) return;
+
+  // toggle Eraser <E>
+  if (e.key.toLowerCase() === "e"){
+    toggleEraser();
+    e.preventDefault();
+    return;
+  }
+
+  // thickness
+  if (e.key === "[") { setStrokeW(strokeW - 1); e.preventDefault(); return; }
+  if (e.key === "]") { setStrokeW(strokeW + 1); e.preventDefault(); return; }
+
+  // save PNG
+  if (e.key.toLowerCase() === "s" && !e.ctrlKey && !e.metaKey && !e.altKey){
+    e.preventDefault(); await saveOutputPNG(); return;
+  }
+
+  // zoom active layer (no modifiers)
+  if (!e.ctrlKey && !e.metaKey && !e.altKey){
+    const step = e.shiftKey ? 1.2 : 1.05;
+    if (e.key === "+" || e.key === "="){ zoomActiveLayer(step); e.preventDefault(); return; }
+    if (e.key === "-" || e.key === "_"){ zoomActiveLayer(1/step); e.preventDefault(); return; }
+  }
+
+  // toggle visibility <H> for the active layer
+  if (e.key.toLowerCase() === "h"){
+    toggleLayerVisibility(activeLayer);
+    e.preventDefault();
+    return;
+  }
+
+// toggle Grab <G>
+  if (e.key.toLowerCase() === "g"){
+    toggleGrab();
+    e.preventDefault();
+    return;
+  }
+
+// exit Grab with Escape
+  if (e.key === "Escape" && tool === TOOL.GRAB){
+    toggleGrab();
+    e.preventDefault();
+    return;
+  }
+  
+
+  // undo/redo
+  const meta = e.ctrlKey || e.metaKey;
+  if (!meta) return;
+  const k = e.key.toLowerCase();
+  if (k === "z" && !e.shiftKey) { undo(); e.preventDefault(); }
+  else if (k === "y" || (k === "z" && e.shiftKey)) { redo(); e.preventDefault(); }
+});
+
+
+
+
+
+function svgPoint(evt){
+  const rect = drawSvg.getBoundingClientRect();
+  const x = (evt.clientX - rect.left) * (drawSvg.viewBox.baseVal.width  || rect.width)  / rect.width;
+  const y = (evt.clientY - rect.top)  * (drawSvg.viewBox.baseVal.height || rect.height) / rect.height;
+  return {x,y};
+}
+
+
+
+
+
+function startDraw(e){
+  ensureViewBox();
+  drawing = true;
+
+  const g = activeLayerGroup();
+  const pGlobal = svgPoint(e);
+  const p = toLocalPoint(g, pGlobal);
+  startPt = p;
+
+  let el;
+  const computedFill = (tool===TOOL.RECT || tool===TOOL.CIRC) && fillOpacity > 0 ? fillColor : "none";
+  const computedFillOpacity = (computedFill === "none") ? null : String(fillOpacity);
+
+  if (tool===TOOL.FREE){
+    el = document.createElementNS("http://www.w3.org/2000/svg","polyline");
+    el.setAttribute("fill","none");
+    el.setAttribute("stroke", strokeColor);
+    el.setAttribute("stroke-linecap","round");
+    el.setAttribute("stroke-linejoin","round");
+    el.setAttribute("stroke-width", String(strokeW));
+    el.setAttribute("vector-effect","non-scaling-stroke");
+    el.setAttribute("points", `${p.x},${p.y}`);
+  } else if (tool===TOOL.LINE){
+    el = document.createElementNS("http://www.w3.org/2000/svg","line");
+    el.setAttribute("x1", p.x); el.setAttribute("y1", p.y);
+    el.setAttribute("x2", p.x); el.setAttribute("y2", p.y);
+    el.setAttribute("stroke", strokeColor);
+    el.setAttribute("stroke-width", String(strokeW));
+    el.setAttribute("stroke-linecap","round");
+    el.setAttribute("vector-effect","non-scaling-stroke");
+    el.setAttribute("fill","none");
+  } else if (tool===TOOL.RECT){
+    el = document.createElementNS("http://www.w3.org/2000/svg","rect");
+    el.setAttribute("x", p.x); el.setAttribute("y", p.y);
+    el.setAttribute("width", 0); el.setAttribute("height", 0);
+    el.setAttribute("fill", computedFill);
+    if (computedFillOpacity) el.setAttribute("fill-opacity", computedFillOpacity);
+    el.setAttribute("stroke", strokeColor);
+    el.setAttribute("stroke-width", String(strokeW));
+    el.setAttribute("vector-effect","non-scaling-stroke");
+  } else if (tool===TOOL.CIRC){
+    el = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    el.setAttribute("cx", p.x); el.setAttribute("cy", p.y);
+    el.setAttribute("r", 0);
+    el.setAttribute("fill", computedFill);
+    if (computedFillOpacity) el.setAttribute("fill-opacity", computedFillOpacity);
+    el.setAttribute("stroke", strokeColor);
+    el.setAttribute("stroke-width", String(strokeW));
+    el.setAttribute("vector-effect","non-scaling-stroke");
+  } else {
+    // not a drawing tool
+    drawing = false;
+    return;
+  }
+
+  g.appendChild(el);
+  setSelected(el);
+  activeDrawEl = el;
+  pushHistory(el, 'add'); // history now stores objects; pass node + op
+}
+
+function moveDraw(e){
+  if (!drawing || !activeDrawEl) return;
+  const g = activeLayerGroup();
+  const p = toLocalPoint(g, svgPoint(e));
+
+  const el = activeDrawEl;
+
+  if (tool===TOOL.FREE){
+    el.setAttribute("points", el.getAttribute("points")+" "+`${p.x},${p.y}`);
+  } else if (tool===TOOL.LINE){
+    el.setAttribute("x2", p.x); el.setAttribute("y2", p.y);
+  } else if (tool===TOOL.RECT){
+    const x = Math.min(startPt.x, p.x); const y = Math.min(startPt.y, p.y);
+    const w = Math.abs(p.x - startPt.x); const h = Math.abs(p.y - startPt.y);
+    el.setAttribute("x", x); el.setAttribute("y", y);
+    el.setAttribute("width", w); el.setAttribute("height", h);
+  } else if (tool===TOOL.CIRC){
+    const dx = p.x - startPt.x; const dy = p.y - startPt.y; const r = Math.sqrt(dx*dx + dy*dy);
+    el.setAttribute("r", r);
+  }
+}
+
+function endDraw(){
+  drawing = false;
+  startPt = null;
+  activeDrawEl = null;
+}
+
+
+
+
+drawSvg.addEventListener("pointerdown", e=>{
+  if (tool === TOOL.ERASE) return;
+  drawSvg.setPointerCapture(e.pointerId);
+  startDraw(e);
+});
+drawSvg.addEventListener("pointermove", e=>{
+  if (tool === TOOL.ERASE) return;
+  moveDraw(e);
+});
+drawSvg.addEventListener("pointerup", ()=>{
+  if (tool === TOOL.ERASE) return;
+  endDraw();
+});
+drawSvg.addEventListener("pointercancel", ()=>{
+  if (tool === TOOL.ERASE) return;
+  endDraw();
+});
+
+
+
+
+drawSvg.addEventListener("click", (e)=>{
+  const el = e.target;
+  if (!el || !el.tagName) return;
+
+      // ignore BG pieces
+  if (el.id === "bgRect" || el.id === "bgImage") return;
+
+      // only if inside a non-BG layer
+  const parent = el.closest("g");
+  if (!parent || parent.getAttribute("data-type") === "bg") return;
+
+  setSelected(el);
+  statusEl.textContent = "element selected";
+});
+
+
+
+    // --- capture helpers
+function sizeHidden(w,h){ hidden.width=w; hidden.height=h; }
+
+async function svgToCanvasBlob(quality=0.92){
+  const r = drawSvg.getBoundingClientRect();
+  const w = Math.round(r.width), h = Math.round(r.height);
+  const svgStr = new XMLSerializer().serializeToString(drawSvg);
+  const blob = new Blob([svgStr], {type:"image/svg+xml"});
+  const url = URL.createObjectURL(blob);
+  const img = new Image(); img.decoding = "async"; img.src = url; await img.decode().catch(()=>{});
+  sizeHidden(w,h); ctx.clearRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+  URL.revokeObjectURL(url);
+  return new Promise(res => hidden.toBlob(res, "image/png", quality));
+}
+
+async function grabFrameBlob(quality=0.9){
+  if (mode===MODE.WEBCAM){
+    if (!cam.videoWidth || !cam.videoHeight) return null;
+    const w=cam.videoWidth, h=cam.videoHeight; sizeHidden(w,h);
+    ctx.save(); ctx.translate(state.Flip_X ? w : 0, state.Flip_Y ? h : 0);
+    ctx.scale(state.Flip_X ? -1 : 1, state.Flip_Y ? -1 : 1);
+    ctx.drawImage(cam,0,0,w,h); ctx.restore();
+    return new Promise(r=> hidden.toBlob(r,"image/jpeg",quality));
+  } else if (mode===MODE.IMAGE){
+    if (!imgUpload.naturalWidth) return null;
+    const w=imgUpload.naturalWidth, h=imgUpload.naturalHeight; sizeHidden(w,h);
+    ctx.drawImage(imgUpload,0,0,w,h);
+    return new Promise(r=> hidden.toBlob(r,"image/jpeg",quality));
+  } else if (mode===MODE.VIDEO){
+    if (!vidFile.videoWidth || !vidFile.videoHeight) return null;
+    const w=vidFile.videoWidth, h=vidFile.videoHeight; sizeHidden(w,h);
+    ctx.drawImage(vidFile,0,0,w,h);
+    return new Promise(r=> hidden.toBlob(r,"image/jpeg",quality));
+  } else { return await svgToCanvasBlob(quality); }
+}
+
+// --- inference
+async function processOne(){
+  if (inFlight) return;
+  const frameBlob = await grabFrameBlob(0.9);
+  if (!frameBlob) { statusEl.textContent="no frame yet"; return; }
+  inFlight = true;
+  try{
+    statusEl.textContent = "processing…";
+    const fd = new FormData();
+    fd.append("frame", frameBlob, "frame.jpg");
+    fd.append("prompt", state.Prompt || "");
+    fd.append("strength", String(state.Strength));
+    fd.append("guidance", String(state.Guidance));
+    fd.append("steps", String(state.Steps));
+    const res = await fetch("/process", { method:"POST", body:fd });
+    if (!res.ok){ let msg = `HTTP ${res.status}`; try{ const j=await res.json(); if (j?.error) msg=j.error; }catch{} throw new Error(msg); }
+
+    const outBlob = await res.blob();
+    const dataUrl = await blobToDataURL(outBlob);      // << for gallery + layer use
+
+    // Update the big preview
+    if (out.dataset.url) URL.revokeObjectURL(out.dataset.url);
+    const url = URL.createObjectURL(outBlob);
+    out.dataset.url = url; out.src = url; statusEl.textContent = "done";
+
+    // Add to gallery (uses dataUrl so it’s embeddable into SVG)
+    addGalleryThumb(dataUrl);
+
+    // (optional) read saved path from header if you ever want it)
+    // const savedRel = res.headers.get("X-Output-Path"); // e.g. "2025-10-09_15-42-01/12-33-44_123.png"
+  }catch(e){ statusEl.textContent = "error"; }
+  finally{ inFlight = false; }
+}
+
+
+    // Save Output PNG (press "S")
+async function saveOutputPNG(){
+  if (!out || !out.src) return;
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.src = out.src;
+  await img.decode().catch(()=>{});
+  const w = img.naturalWidth || out.width || 512;
+  const h = img.naturalHeight || out.height || 512;
+  sizeHidden(w, h);
+  ctx.clearRect(0,0,w,h);
+  ctx.drawImage(img, 0, 0, w, h);
+  const dataUrl = hidden.toDataURL("image/png");
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = `output-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function toggleLive(on){
+  state.Live = !!on;
+  if (on){
+    statusEl.textContent = "live…";
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = setInterval(processOne, Math.max(200, Math.round(avgLatencyMs)));
+  } else {
+    statusEl.textContent = "idle";
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = null;
+  }
+}
+document.getElementById("btnStart").onclick = ()=> toggleLive(true);
+document.getElementById("btnStop").onclick  = ()=> toggleLive(false);
+document.getElementById("btnSnap").onclick  = ()=> processOne();
+
+    // boot
+setMode(MODE.WEBCAM);
+</script>
 </body>
 </html>
